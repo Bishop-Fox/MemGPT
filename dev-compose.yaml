@@ -1,6 +1,7 @@
 services:
   memgpt_db:
     image: ankane/pgvector:v0.5.1
+    platform: linux/arm64
     networks:
       default:
         aliases:
@@ -18,7 +19,8 @@ services:
   memgpt_server:
     #image: memgpt/memgpt-server:latest
     image: memgpt-server
-    hostname: memgpt-server
+    platform: linux/arm64
+#    hostname: memgpt-server
     build:
       context: .
       dockerfile: Dockerfile
