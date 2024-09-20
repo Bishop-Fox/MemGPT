@@ -13,6 +13,7 @@ from memgpt.schemas.openai.chat_completions import ToolCall
 
 class BaseTool(MemGPTBase):
     __id_prefix__ = "tool"
+    __sqlalchemy_model__ = "Tool"
 
     # optional fields
     description: Optional[str] = Field(None, description="The description of the tool.")

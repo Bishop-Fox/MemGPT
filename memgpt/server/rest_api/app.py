@@ -1,4 +1,5 @@
 import json
+<<<<<<< HEAD
 import logging
 import secrets
 from pathlib import Path
@@ -60,6 +61,21 @@ def create_application() -> "FastAPI":
     """the application start routine"""
     # global server
     # server = SyncServer(default_interface_factory=lambda: interface())
+=======
+from pathlib import Path
+
+from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
+
+from memgpt.orm.utilities import get_db_session
+from memgpt.server.rest_api.routers.v1 import ROUTERS as v1_routes
+from memgpt.server.rest_api.static_files import mount_static_files
+from memgpt.settings import settings
+
+
+def create_application() -> "FastAPI":
+    """the application start routine"""
+>>>>>>> refs/heads/integration-block-fixes
 
     app = FastAPI(
         swagger_ui_parameters={"docExpansion": "none"},
@@ -76,6 +92,7 @@ def create_application() -> "FastAPI":
         allow_headers=["*"],
     )
 
+<<<<<<< HEAD
     @app.middleware("http")
     async def set_current_user_middleware(request: Request, call_next):
         user_id = request.headers.get("user_id")
@@ -112,15 +129,33 @@ def create_application() -> "FastAPI":
     # /api/auth endpoints
     app.include_router(setup_auth_router(server, interface, password), prefix=API_PREFIX)
 
+=======
+    for route in v1_routes:
+        app.include_router(route, prefix="/v1")
+        # this gives undocumented routes for "latest" and bare api calls.
+        # we should always tie this to the newest version of the api.
+        app.include_router(route, prefix="", include_in_schema=False)
+        app.include_router(route, prefix="/latest", include_in_schema=False)
+
+>>>>>>> refs/heads/integration-block-fixes
     # / static files
     mount_static_files(app)
 
     @app.on_event("startup")
     def on_startup():
         # load the default tools
+<<<<<<< HEAD
         # from memgpt.orm.tool import Tool
 
         # Tool.load_default_tools(get_db_session())
+=======
+        from memgpt.orm.tool import Tool
+        from memgpt.orm.block import Block
+
+        session_just_for_loading_defaults = get_db_session()
+        Tool.load_default_tools(session_just_for_loading_defaults)
+        Block.load_default_blocks(session_just_for_loading_defaults)
+>>>>>>> refs/heads/integration-block-fixes
 
         # Update the OpenAPI schema
         if not app.openapi_schema:
@@ -144,20 +179,29 @@ def create_application() -> "FastAPI":
                 memgpt_docs,
             ),
         ]:
+<<<<<<< HEAD
             if settings.cors_origins:
                 docs["servers"] = [{"url": host} for host in settings.cors_origins]
+=======
+            docs["servers"] = [{"url": host} for host in settings.cors_origins]
+>>>>>>> refs/heads/integration-block-fixes
             Path(f"openapi_{name}.json").write_text(json.dumps(docs, indent=2))
 
     @app.on_event("shutdown")
     def on_shutdown():
         global server
         server.save_agents()
+<<<<<<< HEAD
         # server = None
+=======
+        server = None
+>>>>>>> refs/heads/integration-block-fixes
 
     return app
 
 
 app = create_application()
+<<<<<<< HEAD
 
 
 def start_server(
@@ -185,3 +229,5 @@ def start_server(
         host=host or "localhost",
         port=port or REST_DEFAULT_PORT,
     )
+=======
+>>>>>>> refs/heads/integration-block-fixes

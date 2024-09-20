@@ -1,12 +1,16 @@
+<<<<<<< HEAD
 import os
 import threading
 import time
 import uuid
 from typing import Union
 
+=======
+>>>>>>> refs/heads/integration-block-fixes
 import pytest
-from dotenv import load_dotenv
+from faker import Faker
 
+<<<<<<< HEAD
 from memgpt import Admin, create_client
 from memgpt.client.client import LocalClient, RESTClient
 from memgpt.constants import DEFAULT_PRESET
@@ -14,11 +18,14 @@ from memgpt.schemas.agent import AgentState
 from memgpt.schemas.enums import JobStatus, MessageStreamStatus
 from memgpt.schemas.memgpt_message import FunctionCallMessage, InternalMonologue
 from memgpt.schemas.memgpt_response import MemGPTResponse, MemGPTStreamingResponse
+=======
+>>>>>>> refs/heads/integration-block-fixes
 from memgpt.schemas.message import Message
 from memgpt.schemas.usage import MemGPTUsageStatistics
 
-# from tests.utils import create_config
+faker = Faker()
 
+<<<<<<< HEAD
 test_agent_name = f"test_client_{str(uuid.uuid4())}"
 # test_preset_name = "test_preset"
 test_preset_name = DEFAULT_PRESET
@@ -83,6 +90,14 @@ def client(request):
 # Fixture for test agent
 @pytest.fixture(scope="module")
 def agent(client: Union[LocalClient, RESTClient]):
+=======
+test_agent_name = "TestAgent"
+
+
+# Fixture for test agent
+@pytest.fixture
+def agent(client):
+>>>>>>> refs/heads/integration-block-fixes
     agent_state = client.create_agent(name=test_agent_name)
     print("AGENT ID", agent_state.id)
     yield agent_state
@@ -91,37 +106,55 @@ def agent(client: Union[LocalClient, RESTClient]):
     client.delete_agent(agent_state.id)
 
 
+<<<<<<< HEAD
 def test_agent(client: Union[LocalClient, RESTClient], agent: AgentState):
+=======
+class TestClientAgent:
+    """CRUD for agents via the client"""
+>>>>>>> refs/heads/integration-block-fixes
 
-    # test client.rename_agent
-    new_name = "RenamedTestAgent"
-    client.rename_agent(agent_id=agent.id, new_name=new_name)
-    renamed_agent = client.get_agent(agent_id=agent.id)
-    assert renamed_agent.name == new_name, "Agent renaming failed"
+    def test_create_agent(self, client):
+        expected_agent_name = faker.name()
+        assert not client.agent_exists(agent_name=expected_agent_name)
+        created_agent_state = client.create_agent(name=expected_agent_name)
+        assert client.agent_exists(agent_name=expected_agent_name)
+        assert created_agent_state.name == expected_agent_name
 
-    # test client.delete_agent and client.agent_exists
-    delete_agent = client.create_agent(name="DeleteTestAgent")
-    assert client.agent_exists(agent_id=delete_agent.id), "Agent creation failed"
-    client.delete_agent(agent_id=delete_agent.id)
-    assert client.agent_exists(agent_id=delete_agent.id) == False, "Agent deletion failed"
+    def test_agent(self, client, agent):
 
+        # test client.rename_agent
+        new_name = "RenamedTestAgent"
+        client.rename_agent(agent_id=agent.id, new_name=new_name)
+        renamed_agent = client.get_agent(agent_id=agent.id)
+        assert renamed_agent.name == new_name, "Agent renaming failed"
 
+<<<<<<< HEAD
 def test_memory(client: Union[LocalClient, RESTClient], agent: AgentState):
     # _reset_config()
+=======
+        # test client.delete_agent and client.agent_exists
+        delete_agent = client.create_agent(name="DeleteTestAgent")
+        assert client.agent_exists(agent_id=delete_agent.id), "Agent creation failed"
+        client.delete_agent(agent_id=delete_agent.id)
+        assert client.agent_exists(agent_id=delete_agent.id) == False, "Agent deletion failed"
+>>>>>>> refs/heads/integration-block-fixes
 
-    memory_response = client.get_in_context_memory(agent_id=agent.id)
-    print("MEMORY", memory_response.compile())
+    def test_memory(self, client, agent):
+        # _reset_config()
 
-    updated_memory = {"human": "Updated human memory", "persona": "Updated persona memory"}
-    client.update_in_context_memory(agent_id=agent.id, section="human", value=updated_memory["human"])
-    client.update_in_context_memory(agent_id=agent.id, section="persona", value=updated_memory["persona"])
-    updated_memory_response = client.get_in_context_memory(agent_id=agent.id)
-    assert (
-        updated_memory_response.get_block("human").value == updated_memory["human"]
-        and updated_memory_response.get_block("persona").value == updated_memory["persona"]
-    ), "Memory update failed"
+        memory_response = client.get_in_context_memory(agent_id=agent.id)
+        print("MEMORY", memory_response)
 
+        updated_memory = {"human": "Updated human memory", "persona": "Updated persona memory"}
+        client.update_in_context_memory(agent_id=agent.id, section="human", value=updated_memory["human"])
+        client.update_in_context_memory(agent_id=agent.id, section="persona", value=updated_memory["persona"])
+        updated_memory_response = client.get_in_context_memory(agent_id=agent.id)
+        assert (
+            updated_memory_response.get_block("human").value == updated_memory["human"]
+            and updated_memory_response.get_block("persona").value == updated_memory["persona"]
+        ), "Memory update failed"
 
+<<<<<<< HEAD
 def test_agent_interactions(client: Union[LocalClient, RESTClient], agent: AgentState):
     # _reset_config()
 
@@ -135,62 +168,106 @@ def test_agent_interactions(client: Union[LocalClient, RESTClient], agent: Agent
     assert response.usage.completion_tokens > 0
     assert isinstance(response.messages[0], Message)
     print(response.messages)
+=======
+    def test_agent_interactions(self, client, agent):
+        # _reset_config()
 
-    # TODO: add streaming tests
+        message = "Hello, agent!"
+        print("Sending message", message)
+        response = client.user_message(agent_id=agent.id, message=message)
+        print("Response", response)
+        assert isinstance(response.usage, MemGPTUsageStatistics)
+        assert response.usage.step_count == 1
+        assert response.usage.total_tokens > 0
+        assert response.usage.completion_tokens > 0
+        assert isinstance(response.messages[0], Message)
+        print(response.messages)
+>>>>>>> refs/heads/integration-block-fixes
 
+        # TODO: add streaming tests
 
+    def test_core_memory(self, client, agent):
+        response = client.send_message(
+            agent_id=agent.id, message="Update your core memory to remember that my name is Timber!", role="user"
+        )
+        print("Response", response)
+
+<<<<<<< HEAD
 def test_archival_memory(client: Union[LocalClient, RESTClient], agent: AgentState):
     # _reset_config()
+=======
+        memory = client.get_in_context_memory(agent_id=agent.id)
+        assert "Timber" in memory.get_block("human").value, f"Updating core memory failed: {memory.get_block('human').value}"
+>>>>>>> refs/heads/integration-block-fixes
 
-    memory_content = "Archival memory content"
-    insert_response = client.insert_archival_memory(agent_id=agent.id, memory=memory_content)[0]
-    print("Inserted memory", insert_response.text, insert_response.id)
-    assert insert_response, "Inserting archival memory failed"
+    def test_messages(self, client, agent):
 
-    archival_memory_response = client.get_archival_memory(agent_id=agent.id, limit=1)
-    archival_memories = [memory.text for memory in archival_memory_response]
-    assert memory_content in archival_memories, f"Retrieving archival memory failed: {archival_memories}"
+        memory_content = "Archival memory content"
+        insert_response = client.insert_archival_memory(agent_id=agent.id, memory=memory_content)[0]
+        print("Inserted memory", insert_response.text, insert_response.id)
+        assert insert_response, "Inserting archival memory failed"
 
-    memory_id_to_delete = archival_memory_response[0].id
-    client.delete_archival_memory(agent_id=agent.id, memory_id=memory_id_to_delete)
+        archival_memory_response = client.get_archival_memory(agent_id=agent.id, limit=1)
+        archival_memories = [memory.text for memory in archival_memory_response]
+        assert memory_content in archival_memories, f"Retrieving archival memory failed: {archival_memories}"
 
-    # add archival memory
-    memory_str = "I love chats"
-    passage = client.insert_archival_memory(agent.id, memory=memory_str)[0]
+        memory_id_to_delete = archival_memory_response[0].id
+        client.delete_archival_memory(agent_id=agent.id, memory_id=memory_id_to_delete)
 
-    # list archival memory
-    passages = client.get_archival_memory(agent.id)
-    assert passage.text in [p.text for p in passages], f"Missing passage {passage.text} in {passages}"
+        # add archival memory
+        memory_str = "I love chats"
+        passage = client.insert_archival_memory(agent.id, memory=memory_str)[0]
 
-    # get archival memory summary
-    archival_summary = client.get_archival_memory_summary(agent.id)
-    assert archival_summary.size == 1, f"Archival memory summary size is {archival_summary.size}"
+        # list archival memory
+        passages = client.get_archival_memory(agent.id)
+        assert passage.text in [p.text for p in passages], f"Missing passage {passage.text} in {passages}"
 
-    # delete archival memory
-    client.delete_archival_memory(agent.id, passage.id)
+        # get archival memory summary
+        archival_summary = client.get_archival_memory_summary(agent.id)
+        assert archival_summary.size == 1, f"Archival memory summary size is {archival_summary.size}"
 
-    # TODO: check deletion
-    client.get_archival_memory(agent.id)
+        # delete archival memory
+        client.delete_archival_memory(agent.id, passage.id)
 
+        # TODO: check deletion
+        client.get_archival_memory(agent.id)
 
+<<<<<<< HEAD
 def test_core_memory(client: Union[LocalClient, RESTClient], agent: AgentState):
     response = client.send_message(agent_id=agent.id, message="Update your core memory to remember that my name is Timber!", role="user")
     print("Response", response)
+=======
+    def test_messages(self, client, agent):
+>>>>>>> refs/heads/integration-block-fixes
 
-    memory = client.get_in_context_memory(agent_id=agent.id)
-    assert "Timber" in memory.get_block("human").value, f"Updating core memory failed: {memory.get_block('human').value}"
+        send_message_response = client.send_message(agent_id=agent.id, message="Test message", role="user")
+        assert send_message_response, "Sending message failed"
 
+        messages_response = client.get_messages(agent_id=agent.id, limit=1)
+        assert len(messages_response) > 0, "Retrieving messages failed"
 
+<<<<<<< HEAD
 def test_messages(client: Union[LocalClient, RESTClient], agent: AgentState):
     # _reset_config()
+=======
+    def test_humans_personas(self, client):
+>>>>>>> refs/heads/integration-block-fixes
 
-    send_message_response = client.send_message(agent_id=agent.id, message="Test message", role="user")
-    assert send_message_response, "Sending message failed"
+        humans_response = client.list_humans()
+        print("HUMANS", humans_response)
 
-    messages_response = client.get_messages(agent_id=agent.id, limit=1)
-    assert len(messages_response) > 0, "Retrieving messages failed"
+        personas_response = client.list_personas()
+        print("PERSONAS", personas_response)
 
+        persona_name = "TestPersona"
+        persona_id = client.get_persona_id(persona_name)
+        if persona_id:
+            client.delete_persona(persona_id)
+        persona = client.create_persona(name=persona_name, text="Persona text")
+        assert persona.name == persona_name
+        assert persona.value == "Persona text", "Creating persona failed"
 
+<<<<<<< HEAD
 def test_streaming_send_message(client: Union[LocalClient, RESTClient], agent: AgentState):
     if isinstance(client, LocalClient):
         pytest.skip("Skipping test_streaming_send_message because LocalClient does not support streaming")
@@ -246,60 +323,118 @@ def test_streaming_send_message(client: Union[LocalClient, RESTClient], agent: A
 
 def test_humans_personas(client: Union[LocalClient, RESTClient], agent: AgentState):
     # _reset_config()
+=======
+        human_name = "TestHuman"
+        human_id = client.get_human_id(human_name)
+        if human_id:
+            client.delete_human(human_id)
+        human = client.create_human(name=human_name, text="Human text")
+        assert human.name == human_name
+        assert human.value == "Human text", "Creating human failed"
+>>>>>>> refs/heads/integration-block-fixes
 
-    humans_response = client.list_humans()
-    print("HUMANS", humans_response)
+        # def test_tools(client, agent):
+        #    tools_response = client.list_tools()
+        #    print("TOOLS", tools_response)
+        #
+        #    tool_name = "TestTool"
+        #    tool_response = client.create_tool(name=tool_name, source_code="print('Hello World')", source_type="python")
+        #    assert tool_response, "Creating tool failed"
 
-    personas_response = client.list_personas()
-    print("PERSONAS", personas_response)
+    def test_config(self, client):
 
-    persona_name = "TestPersona"
-    persona_id = client.get_persona_id(persona_name)
-    if persona_id:
-        client.delete_persona(persona_id)
-    persona = client.create_persona(name=persona_name, text="Persona text")
-    assert persona.name == persona_name
-    assert persona.value == "Persona text", "Creating persona failed"
+        models_response = client.list_models()
+        print("MODELS", models_response)
 
-    human_name = "TestHuman"
-    human_id = client.get_human_id(human_name)
-    if human_id:
-        client.delete_human(human_id)
-    human = client.create_human(name=human_name, text="Human text")
-    assert human.name == human_name
-    assert human.value == "Human text", "Creating human failed"
+        embeddings_response = client.list_embedding_models()
+        print("EMBEDDINGS", embeddings_response)
 
+        # TODO: add back
+        # config_response = client.get_config()
+        # TODO: ensure config is the same as the one in the server
+        # print("CONFIG", config_response)
 
-# def test_tools(client, agent):
-#    tools_response = client.list_tools()
-#    print("TOOLS", tools_response)
-#
-#    tool_name = "TestTool"
-#    tool_response = client.create_tool(name=tool_name, source_code="print('Hello World')", source_type="python")
-#    assert tool_response, "Creating tool failed"
+    def test_sources(self, client, agent):
 
+        if not hasattr(client, "base_url"):
+            pytest.skip("Skipping test_sources because base_url is None")
 
+<<<<<<< HEAD
 def test_config(client: Union[LocalClient, RESTClient], agent: AgentState):
     # _reset_config()
+=======
+        # list sources
+        sources = client.list_sources()
+        print("listed sources", sources)
+        assert len(sources) == 0
+>>>>>>> refs/heads/integration-block-fixes
 
-    models_response = client.list_models()
-    print("MODELS", models_response)
+        # create a source
+        source = client.create_source(name="test_source")
 
-    embeddings_response = client.list_embedding_models()
-    print("EMBEDDINGS", embeddings_response)
+        # list sources
+        sources = client.list_sources()
+        print("listed sources", sources)
+        assert len(sources) == 1
 
-    # TODO: add back
-    # config_response = client.get_config()
-    # TODO: ensure config is the same as the one in the server
-    # print("CONFIG", config_response)
+        # TODO: add back?
+        assert sources[0].metadata_["num_passages"] == 0
+        assert sources[0].metadata_["num_documents"] == 0
 
+        # update the source
+        original_id = source.id
+        original_name = source.name
+        new_name = original_name + "_new"
+        client.update_source(source_id=source.id, name=new_name)
 
+<<<<<<< HEAD
 def test_sources(client: Union[LocalClient, RESTClient], agent: AgentState):
     # _reset_config()
+=======
+        # get the source name (check that it's been updated)
+        source = client.get_source(source_id=source.id)
+        assert source.name == new_name
+        assert source.id == original_id
+>>>>>>> refs/heads/integration-block-fixes
 
-    # clear sources
-    for source in client.list_sources():
+        # get the source id (make sure that it's the same)
+        assert str(original_id) == client.get_source_id(source_name=new_name)
+
+        # check agent archival memory size
+        archival_memories = client.get_archival_memory(agent_id=agent.id)
+        print(archival_memories)
+        assert len(archival_memories) == 0
+
+        # load a file into a source
+        filename = "CONTRIBUTING.md"
+        upload_job = client.load_file_into_source(filename=filename, source_id=source.id)
+        print("Upload job", upload_job, upload_job.status, upload_job.metadata_)
+
+        # TODO: make sure things run in the right order
+        archival_memories = client.get_archival_memory(agent_id=agent.id)
+        assert len(archival_memories) == 0
+
+        # attach a source
+        client.attach_source_to_agent(source_id=source.id, agent_id=agent.id)
+
+        # list archival memory
+        archival_memories = client.get_archival_memory(agent_id=agent.id)
+        # print(archival_memories)
+        assert len(archival_memories) == 20 or len(archival_memories) == 21
+
+        # check number of passages
+        sources = client.list_sources()
+        assert sources.sources[0].metadata_["num_passages"] > 0
+        assert sources.sources[0].metadata_["num_documents"] == 0  # TODO: fix this once document store added
+        print(sources)
+
+        # detach the source
+        # TODO: add when implemented
+        # client.detach_source(source.name, agent.id)
+
+        # delete the source
         client.delete_source(source.id)
+<<<<<<< HEAD
 
     # list sources
     sources = client.list_sources()
@@ -410,3 +545,5 @@ def test_message_update(client: Union[LocalClient, RESTClient], agent: AgentStat
     new_text = "This exact string would never show up in the message???"
     new_message = client.update_message(message_id=message.id, text=new_text, agent_id=agent.id)
     assert new_message.text == new_text
+=======
+>>>>>>> refs/heads/integration-block-fixes

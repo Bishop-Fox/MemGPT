@@ -3,7 +3,12 @@ import logging
 import os
 import sys
 from enum import Enum
+<<<<<<< HEAD
 from typing import Annotated, Optional
+=======
+from pathlib import Path
+from typing import Annotated, Optional, Tuple
+>>>>>>> refs/heads/integration-block-fixes
 
 import questionary
 import requests
@@ -22,7 +27,11 @@ from memgpt.schemas.embedding_config import EmbeddingConfig
 from memgpt.schemas.enums import OptionState
 from memgpt.schemas.llm_config import LLMConfig
 from memgpt.schemas.memory import ChatMemory, Memory
+<<<<<<< HEAD
 from memgpt.server.server import logger as server_logger
+=======
+from memgpt.settings import settings
+>>>>>>> refs/heads/integration-block-fixes
 
 # from memgpt.interface import CLIInterface as interface  # for printing to terminal
 from memgpt.streaming_interface import (
@@ -48,7 +57,7 @@ def str_to_quickstart_choice(choice_str: str) -> QuickstartChoice:
         raise ValueError(f"{choice_str} is not a valid QuickstartChoice. Valid options are: {valid_options}")
 
 
-def set_config_with_dict(new_config: dict) -> (MemGPTConfig, bool):
+def set_config_with_dict(new_config: dict) -> Tuple[MemGPTConfig, bool]:
     """_summary_
 
     Args:
@@ -317,9 +326,19 @@ def server(
             sys.exit(1)
 
         try:
+<<<<<<< HEAD
             from memgpt.server.rest_api.app import start_server
 
             start_server(port=port, host=host, debug=debug)
+=======
+            from memgpt.cli.start_remote_server import start_server
+
+            start_server(
+                port=port,
+                host=host,
+                debug=debug,
+            )
+>>>>>>> refs/heads/integration-block-fixes
 
         except KeyboardInterrupt:
             # Handle CTRL-C
@@ -327,7 +346,40 @@ def server(
             sys.exit(0)
 
     elif type == ServerChoice.ws_api:
+<<<<<<< HEAD
         raise NotImplementedError("WS suppport deprecated")
+=======
+        port = port or 8282  # WS default
+        if debug:
+            settings.debug = debug
+
+        # Change to the desired directory
+        script_path = Path(__file__).resolve()
+        script_dir = script_path.parent
+
+        server_directory = os.path.join(script_dir.parent, "server", "ws_api")
+        command = f"python server.py {port}"
+
+        # Run the command
+        typer.secho(f"Running WS (websockets) server: {command} (inside {server_directory})")
+
+        process = None
+        try:
+            # Start the subprocess in a new session
+            process = subprocess.Popen(command, shell=True, start_new_session=True, cwd=server_directory)
+            process.wait()
+        except KeyboardInterrupt:
+            # Handle CTRL-C
+            if process is not None:
+                typer.secho("Terminating the server...")
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    typer.secho("Server terminated with kill()")
+            sys.exit(0)
+>>>>>>> refs/heads/integration-block-fixes
 
 
 def run(
@@ -371,54 +423,12 @@ def run(
 
     """
 
-    # setup logger
     # TODO: remove Utils Debug after global logging is complete.
     utils.DEBUG = debug
     # TODO: add logging command line options for runtime log level
 
     if debug:
-        logger.setLevel(logging.DEBUG)
-        server_logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.CRITICAL)
-        server_logger.setLevel(logging.CRITICAL)
-
-    # from memgpt.migrate import (
-    #    VERSION_CUTOFF,
-    #    config_is_compatible,
-    #    wipe_config_and_reconfigure,
-    # )
-
-    # if not config_is_compatible(allow_empty=True):
-    #    typer.secho(f"\nYour current config file is incompatible with MemGPT versions later than {VERSION_CUTOFF}\n", fg=typer.colors.RED)
-    #    choices = [
-    #        "Run the full config setup (recommended)",
-    #        "Create a new config using defaults",
-    #        "Cancel",
-    #    ]
-    #    selection = questionary.select(
-    #        f"To use MemGPT, you must either downgrade your MemGPT version (<= {VERSION_CUTOFF}), or regenerate your config. Would you like to proceed?",
-    #        choices=choices,
-    #        default=choices[0],
-    #    ).ask()
-    #    if selection == choices[0]:
-    #        try:
-    #            wipe_config_and_reconfigure()
-    #        except Exception as e:
-    #            typer.secho(f"Fresh config generation failed - error:\n{e}", fg=typer.colors.RED)
-    #            raise
-    #    elif selection == choices[1]:
-    #        try:
-    #            # Don't create a config, so that the next block of code asking about quickstart is run
-    #            wipe_config_and_reconfigure(run_configure=False, create_config=False)
-    #        except Exception as e:
-    #            typer.secho(f"Fresh config generation failed - error:\n{e}", fg=typer.colors.RED)
-    #            raise
-    #    else:
-    #        typer.secho("MemGPT config regeneration cancelled", fg=typer.colors.RED)
-    #        raise KeyboardInterrupt()
-
-    #    typer.secho("Note: if you would like to migrate old agents to the new release, please run `memgpt migrate`!", fg=typer.colors.GREEN)
+        settings.debug = debug
 
     if not MemGPTConfig.exists():
         # if no config, ask about quickstart
@@ -590,8 +600,10 @@ def run(
 
         # create agent
         client = create_client()
+        print("crated client", client.user_id)
         human_obj = client.get_human(client.get_human_id(name=human))
         persona_obj = client.get_persona(client.get_persona_id(name=persona))
+        print("get humans", client.user_id)
         if human_obj is None:
             typer.secho(f"Couldn't find human {human} in database, please run `memgpt add human`", fg=typer.colors.RED)
             sys.exit(1)
@@ -610,9 +622,12 @@ def run(
 
         memory = ChatMemory(human=human_obj.value, persona=persona_obj.value, limit=core_memory_limit)
         metadata = {"human": human_obj.name, "persona": persona_obj.name}
+        print("created memory", client.user_id)
 
         typer.secho(f"->  🤖 Using persona profile: '{persona_obj.name}'", fg=typer.colors.WHITE)
         typer.secho(f"->  🧑 Using human profile: '{human_obj.name}'", fg=typer.colors.WHITE)
+
+        print("before create agent", client.user_id)
 
         # add tools
         agent_state = client.create_agent(
@@ -623,9 +638,14 @@ def run(
             memory=memory,
             metadata=metadata,
         )
+
+        print(client.user_id)
         assert isinstance(agent_state.memory, Memory), f"Expected Memory, got {type(agent_state.memory)}"
-        typer.secho(f"->  🛠️  {len(agent_state.tools)} tools: {', '.join([t for t in agent_state.tools])}", fg=typer.colors.WHITE)
-        tools = [ms.get_tool(tool_name, user_id=client.user_id) for tool_name in agent_state.tools]
+        # tools = [t.name for t in agent_state.tools if isinstance(t, Tool) else t]
+        # typer.secho(f"->  🛠️  {len(agent_state.tools)} tools: {', '.join([t for t in agent_state.tools])}", fg=typer.colors.WHITE)
+        # tools = [ms.get_tool(tool_name, user_id=client.user_id) for tool_name in agent_state.tools]
+        tools = agent_state.tools
+        print("TOOLS", [t.name for t in tools])
 
         memgpt_agent = Agent(
             interface=interface(),

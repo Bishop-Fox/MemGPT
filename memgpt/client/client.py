@@ -1,16 +1,28 @@
+<<<<<<< HEAD
 import logging
 import time
 from typing import Callable, Dict, Generator, List, Optional, Union
+=======
+import asyncio
+import threading
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Coroutine, Dict, List, Optional, Tuple, Union
+>>>>>>> refs/heads/integration-block-fixes
 
-import requests
+import httpx
 
 import memgpt.utils
 from memgpt.config import MemGPTConfig
-from memgpt.constants import BASE_TOOLS, DEFAULT_HUMAN, DEFAULT_PERSONA
+from memgpt.constants import BASE_TOOLS
 from memgpt.data_sources.connectors import DataConnector
 from memgpt.functions.functions import parse_source_code
+from memgpt.log import get_logger
 from memgpt.memory import get_memory_functions
 from memgpt.schemas.agent import AgentState, CreateAgent, UpdateAgentState
+
+# new schemas
 from memgpt.schemas.block import (
     Block,
     CreateBlock,
@@ -32,8 +44,7 @@ from memgpt.schemas.memgpt_request import MemGPTRequest
 from memgpt.schemas.memgpt_response import MemGPTResponse, MemGPTStreamingResponse
 from memgpt.schemas.memory import (
     ArchivalMemorySummary,
-    ChatMemory,
-    CreateArchivalMemory,
+    BlockChatMemory,
     Memory,
     RecallMemorySummary,
 )
@@ -42,17 +53,40 @@ from memgpt.schemas.openai.chat_completions import ToolCall
 from memgpt.schemas.passage import Passage
 from memgpt.schemas.source import Source, SourceCreate, SourceUpdate
 from memgpt.schemas.tool import Tool, ToolCreate, ToolUpdate
-from memgpt.schemas.user import UserCreate
 from memgpt.server.rest_api.interface import QueuingInterface
+from memgpt.server.schemas.config import ConfigResponse
+
+# This is a hack for now, should be using new schemas
+from memgpt.server.schemas.humans import ListHumansResponse
+from memgpt.server.schemas.personas import ListPersonasResponse
 from memgpt.server.server import SyncServer
+from memgpt.settings import settings
 from memgpt.utils import get_human_text, get_persona_text
 
+if TYPE_CHECKING:
+    from httpx import ASGITransport, WSGITransport
 
-def create_client(base_url: Optional[str] = None, token: Optional[str] = None):
-    if base_url is None:
-        return LocalClient()
-    else:
-        return RESTClient(base_url, token)
+logger = get_logger(__name__)
+
+
+def create_client(
+    base_url: Optional[str] = None,
+    token: Optional[str] = None,
+    config: Optional[MemGPTConfig] = None,
+    app: Optional[str] = None,
+    debug: Optional[bool] = False,
+) -> Union["RESTClient", "LocalClient"]:
+    """factory method to create either a local or rest api enabled client.
+    _TODO: link to docs on the difference between the two._
+
+    base_url: str if provided, the url to the rest api server
+    token: str if provided, the token to authenticate to the rest api server
+    config: MemGPTConfig if provided, the configuration settings to use for the local client
+    app: str if provided an ASGI compliant application to use instead of an actual http call. used for testing hook.
+    """
+    if base_url:
+        return RESTClient(base_url=base_url, token=token, debug=debug, app=app)
+    return LocalClient(config=config, debug=debug)
 
 
 class AbstractClient(object):
@@ -64,7 +98,18 @@ class AbstractClient(object):
         self.auto_save = auto_save
         self.debug = debug
 
+<<<<<<< HEAD
     def agent_exists(self, agent_id: Optional[str] = None, agent_name: Optional[str] = None) -> bool:
+=======
+    # agents
+
+    def list_agents(self):
+        """List all agents associated with a given user."""
+        raise NotImplementedError
+
+    def agent_exists(self, agent_id: Optional[str] = None) -> bool:
+        """Check if an agent with the specified ID or name exists."""
+>>>>>>> refs/heads/integration-block-fixes
         raise NotImplementedError
 
     def create_agent(
@@ -260,6 +305,7 @@ class AbstractClient(object):
 
 
 class RESTClient(AbstractClient):
+<<<<<<< HEAD
     """
     REST client for MemGPT
 
@@ -267,6 +313,10 @@ class RESTClient(AbstractClient):
         base_url (str): Base URL of the REST API
         headers (Dict): Headers for the REST API (includes token)
     """
+=======
+
+    httpx_client: "httpx.Client"
+>>>>>>> refs/heads/integration-block-fixes
 
     def __init__(
         self,
@@ -274,6 +324,7 @@ class RESTClient(AbstractClient):
         token: str,
         api_prefix: str = "v1",
         debug: bool = False,
+        app: Optional[Union["WSGITransport", "ASGITransport"]] = None,
     ):
         """
         Initializes a new instance of Client class.
@@ -284,6 +335,7 @@ class RESTClient(AbstractClient):
             debug (bool): Whether to print debug information.
         """
         super().__init__(debug=debug)
+<<<<<<< HEAD
         self.base_url = base_url
         self.api_prefix = api_prefix
         self.headers = {"accept": "application/json", "authorization": f"Bearer {token}"}
@@ -312,6 +364,64 @@ class RESTClient(AbstractClient):
             return True
         else:
             raise ValueError(f"Failed to check if agent exists: {response.text}")
+=======
+        httpx_client_args = {
+            "headers": {"accept": "application/json", "authorization": f"Bearer {token}"},
+            "base_url": base_url,
+        }
+        if app:
+            logger.warning("Using supplied WSGI or ASGI app for RESTClient")
+            httpx_client_args["app"] = app
+
+        self.httpx_client = httpx.AsyncClient(**httpx_client_args)
+
+    def run_sync(self, coroutine: Coroutine) -> Any:
+        """converts the api calls to sync for sync use
+        https://stackoverflow.com/questions/55647753/call-async-function-from-sync-function-while-the-synchronous-function-continues
+        """
+
+        def run_in_new_loop():
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(coroutine)
+            finally:
+                new_loop.close()
+
+        try:
+            loop = asyncio.get_running_loop()
+            if not threading.current_thread() is threading.main_thread():
+                return asyncio.run_coroutine_threadsafe(coroutine, loop).result()
+            if not loop.is_running():
+                return loop.run_until_complete(coroutine)
+            else:
+                with ThreadPoolExecutor() as pool:
+                    future = pool.submit(run_in_new_loop)
+                    return future.result(timeout=30.0)
+        except RuntimeError:
+            return asyncio.run(coroutine)
+
+    def list_agents(self) -> List[AgentState]:
+        response = self.run_sync(self.httpx_client.get("/agents/"))
+        return response.json()
+
+    def agent_exists(self, agent_id: Optional[str] = None, agent_name: Optional[str] = None) -> bool:
+        response = self.run_sync(self.httpx_client.get("/agents/"))
+        if response.status_code != 200:
+            raise ValueError(f"Failed to list agents: {response.text}")
+        for agent in response.json():
+            if agent_id and agent["id"] == agent_id:
+                return True
+            if agent_name and agent["name"] == agent_name:
+                return True
+        return False
+
+    def get_tool(self, tool_name: str):
+        response = self.httpx_client.get(f"/tools/{tool_name}/")
+        if response.status_code != 200:
+            raise ValueError(f"Failed to get tool: {response.text}")
+        return Tool(**response.json())
+>>>>>>> refs/heads/integration-block-fixes
 
     def create_agent(
         self,
@@ -320,14 +430,16 @@ class RESTClient(AbstractClient):
         embedding_config: Optional[EmbeddingConfig] = None,
         llm_config: Optional[LLMConfig] = None,
         # memory
-        memory: Memory = ChatMemory(human=get_human_text(DEFAULT_HUMAN), persona=get_persona_text(DEFAULT_PERSONA)),
-        # system
-        system: Optional[str] = None,
+        memory: Memory = BlockChatMemory(
+            blocks=[
+                Block(name="human block", value=get_human_text(settings.human), label="human"),
+                Block(name="persona block", value=get_persona_text(settings.persona), label="persona"),
+            ]
+        ),
         # tools
         tools: Optional[List[str]] = None,
         include_base_tools: Optional[bool] = True,
-        # metadata
-        metadata: Optional[Dict] = {"human:": DEFAULT_HUMAN, "persona": DEFAULT_PERSONA},
+        metadata: Optional[Dict] = {"human:": settings.human, "persona": settings.persona},
         description: Optional[str] = None,
     ) -> AgentState:
         """Create an agent
@@ -346,41 +458,45 @@ class RESTClient(AbstractClient):
         Returns:
             agent_state (AgentState): State of the created agent
         """
-
-        # TODO: implement this check once name lookup works
-        # if name:
-        #    exist_agent_id = self.get_agent_id(agent_name=name)
-
-        #    raise ValueError(f"Agent with name {name} already exists")
-
-        # construct list of tools
         tool_names = []
         if tools:
             tool_names += tools
         if include_base_tools:
             tool_names += BASE_TOOLS
 
+        # TODO: why is this here?
         # add memory tools
-        memory_functions = get_memory_functions(memory)
-        for func_name, func in memory_functions.items():
-            tool = self.create_tool(func, name=func_name, tags=["memory", "memgpt-base"], update=True)
-            tool_names.append(tool.name)
+        # memory_functions = get_memory_functions(memory)
+        # for func_name, func in memory_functions.items():
+        #     tool = self.run_sync(self.create_tool(func, name=func_name, tags=["memory", "memgpt-base"], update=True))
+        #     tool_names.append(tool.name)
 
-        # create agent
         request = CreateAgent(
             name=name,
             description=description,
             metadata_=metadata,
             memory=memory,
             tools=tool_names,
-            system=system,
             llm_config=llm_config,
             embedding_config=embedding_config,
         )
 
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/agents", json=request.model_dump(), headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post("/agents/", json=request.model_dump(exclude_none=True)))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Status {response.status_code} - Failed to create agent: {response.text}")
+
+        return AgentState(**response.json())
+
+    def rename_agent(self, agent_id: str, new_name: str):
+        # NOTE: this route no longer exists
+        response = self.run_sync(self.httpx_client.patch(f"/agents/{agent_id}/rename/", json={"agent_name": new_name}))
+
+        assert response.status_code == 200, f"Failed to rename agent: {response.text}"
+
         return AgentState(**response.json())
 
     def update_message(
@@ -451,11 +567,16 @@ class RESTClient(AbstractClient):
             message_ids=message_ids,
             memory=memory,
         )
+<<<<<<< HEAD
         response = requests.patch(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}", json=request.model_dump(), headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/agents/{agent_id}", json=request.model_dump(exclude_none=True)))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to update agent: {response.text}")
         return AgentState(**response.json())
 
+<<<<<<< HEAD
     def rename_agent(self, agent_id: str, new_name: str):
         """
         Rename an agent
@@ -488,7 +609,21 @@ class RESTClient(AbstractClient):
             agent_state (AgentState): State representation of the agent
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}", headers=self.headers)
+=======
+    # def rename_agent(self, agent_id: str, new_name: str):
+    #     return self.update_agent(agent_id, name=new_name)
+
+    def delete_agent(self, agent_id: str):
+        """Delete the agent."""
+        response = self.run_sync(self.httpx_client.delete(f"/agents/{agent_id}"))
+        assert response.status_code == 200, f"Failed to delete agent: {response.text}"
+
+    def get_agent(self, agent_id: Optional[str] = None, agent_name: Optional[str] = None) -> AgentState:
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/config/"))
+        # TODO: this should be a 404 without details, don't share failed response with a bad actor
+>>>>>>> refs/heads/integration-block-fixes
         assert response.status_code == 200, f"Failed to get agent: {response.text}"
+
         return AgentState(**response.json())
 
     def get_agent_id(self, agent_name: str) -> AgentState:
@@ -505,6 +640,7 @@ class RESTClient(AbstractClient):
         raise NotImplementedError
 
     # memory
+<<<<<<< HEAD
     def get_in_context_memory(self, agent_id: str) -> Memory:
         """
         Get the in-contxt (i.e. core) memory of an agent
@@ -516,6 +652,18 @@ class RESTClient(AbstractClient):
             memory (Memory): In-context memory of the agent
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/memory", headers=self.headers)
+=======
+    def get_agent_memory(self, agent_id: uuid.UUID) -> Memory:
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/memory/"))
+        return Memory(**response.json())
+
+    def update_agent_core_memory(self, agent_id: str, new_memory_contents: Dict) -> Memory:
+        response = self.run_sync(self.httpx_client.post(f"/agents/{agent_id}/memory/", json=new_memory_contents))
+        return Memory(**response.json())
+
+    def get_in_context_memory(self, agent_id: uuid.UUID) -> Memory:
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/memory/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to get in-context memory: {response.text}")
         return Memory(**response.json())
@@ -532,14 +680,19 @@ class RESTClient(AbstractClient):
 
         """
         memory_update_dict = {section: value}
+<<<<<<< HEAD
         response = requests.patch(
             f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/memory", json=memory_update_dict, headers=self.headers
         )
+=======
+        response = self.run_sync(self.httpx_client.post(f"/agents/{agent_id}/memory/", json=memory_update_dict))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to update in-context memory: {response.text}")
         return Memory(**response.json())
 
     def get_archival_memory_summary(self, agent_id: str) -> ArchivalMemorySummary:
+<<<<<<< HEAD
         """
         Get a summary of the archival memory of an agent
 
@@ -551,11 +704,15 @@ class RESTClient(AbstractClient):
 
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/memory/archival", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/memory/archival/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to get archival memory summary: {response.text}")
         return ArchivalMemorySummary(**response.json())
 
     def get_recall_memory_summary(self, agent_id: str) -> RecallMemorySummary:
+<<<<<<< HEAD
         """
         Get a summary of the recall memory of an agent
 
@@ -566,11 +723,15 @@ class RESTClient(AbstractClient):
             summary (RecallMemorySummary): Summary of the recall memory
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/memory/recall", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/memory/recall/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to get recall memory summary: {response.text}")
         return RecallMemorySummary(**response.json())
 
     def get_in_context_messages(self, agent_id: str) -> List[Message]:
+<<<<<<< HEAD
         """
         Get in-context messages of an agent
 
@@ -581,12 +742,16 @@ class RESTClient(AbstractClient):
             messages (List[Message]): List of in-context messages
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/memory/messages", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/memory/messages/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to get in-context messages: {response.text}")
         return [Message(**message) for message in response.json()]
 
     # agent interactions
 
+<<<<<<< HEAD
     def user_message(self, agent_id: str, message: str, include_full_message: Optional[bool] = False) -> MemGPTResponse:
         """
         Send a message to an agent as a user
@@ -599,12 +764,19 @@ class RESTClient(AbstractClient):
             response (MemGPTResponse): Response from the agent
         """
         return self.send_message(agent_id, message, role="user", include_full_message=include_full_message)
+=======
+    def user_message(self, agent_id: str, message: str) -> MemGPTResponse:
+        return self.run_sync(self.send_message(agent_id, message, role="user"))
+
+    def run_command(self, agent_id: str, command: str) -> Union[Message, str, None]:
+        response = self.run_sync(self.httpx_client.post(f"/agents/{agent_id}/command/", json={"command": command}))
+        return Message(**response.json())
+>>>>>>> refs/heads/integration-block-fixes
 
     def save(self):
         raise NotImplementedError
 
     # archival memory
-
     def get_archival_memory(
         self, agent_id: str, before: Optional[str] = None, after: Optional[str] = None, limit: Optional[int] = 1000
     ) -> List[Passage]:
@@ -625,6 +797,7 @@ class RESTClient(AbstractClient):
             params["before"] = str(before)
         if after:
             params["after"] = str(after)
+<<<<<<< HEAD
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{str(agent_id)}/archival", params=params, headers=self.headers)
         assert response.status_code == 200, f"Failed to get archival memory: {response.text}"
         return [Passage(**passage) for passage in response.json()]
@@ -644,10 +817,19 @@ class RESTClient(AbstractClient):
         response = requests.post(
             f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/archival", headers=self.headers, json=request.model_dump()
         )
+=======
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/archival/", params=params))
+        assert response.status_code == 200, f"Failed to get archival memory: {response.text}"
+        return [Passage(**passage) for passage in response.json()]
+
+    def insert_archival_memory(self, agent_id: uuid.UUID, memory: str) -> List[Passage]:
+        response = self.run_sync(self.httpx_client.post(f"/agents/{agent_id}/archival/{memory}/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to insert archival memory: {response.text}")
         return [Passage(**passage) for passage in response.json()]
 
+<<<<<<< HEAD
     def delete_archival_memory(self, agent_id: str, memory_id: str):
         """
         Delete archival memory from an agent
@@ -657,12 +839,16 @@ class RESTClient(AbstractClient):
             memory_id (str): ID of the memory
         """
         response = requests.delete(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/archival/{memory_id}", headers=self.headers)
+=======
+    def delete_archival_memory(self, agent_id: uuid.UUID, memory_id: uuid.UUID):
+        response = self.run_sync(self.httpx_client.delete(f"/agents/{agent_id}/archival/?id={memory_id}"))
+>>>>>>> refs/heads/integration-block-fixes
         assert response.status_code == 200, f"Failed to delete archival memory: {response.text}"
 
     # messages (recall memory)
-
     def get_messages(
         self, agent_id: str, before: Optional[str] = None, after: Optional[str] = None, limit: Optional[int] = 1000
+<<<<<<< HEAD
     ) -> List[Message]:
         """
         Get messages from an agent with pagination.
@@ -679,10 +865,16 @@ class RESTClient(AbstractClient):
 
         params = {"before": before, "after": after, "limit": limit, "msg_object": True}
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/messages", params=params, headers=self.headers)
+=======
+    ) -> MemGPTResponse:
+        params = {"before": before, "after": after, "limit": limit}
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/messages-cursor/", params=params))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to get messages: {response.text}")
         return [Message(**message) for message in response.json()]
 
+<<<<<<< HEAD
     def send_message(
         self,
         agent_id: str,
@@ -734,69 +926,139 @@ class RESTClient(AbstractClient):
                 response.messages = messages
 
             return response
+=======
+    def send_message(self, agent_id: str, message: str, role: str, stream: Optional[bool] = False) -> MemGPTResponse:
+        request = MemGPTRequest(
+            messages=[MessageCreate(text=message, role=role)], run_async=False, stream_steps=stream, stream_tokens=stream
+        )
+        response = self.run_sync(self.httpx_client.post(f"/agents/{agent_id}/messages", json=request.model_dump(exclude_none=True)))
+        if response.status_code != 200:
+            raise ValueError(f"Failed to send message: {response.text}")
+        return MemGPTResponse(**response.json())
+>>>>>>> refs/heads/integration-block-fixes
 
     # humans / personas
+    def list_humans(self) -> ListHumansResponse:
+        response = self.run_sync(self.httpx_client.get("/humans/"))
+        return ListHumansResponse(**response.json())
+
+    def create_human(self, name: str, human: str) -> Human:
+        data = {"name": name, "text": human}
+        response = self.run_sync(self.httpx_client.post("/humans/", json=data))
+        return Human(**response.json())
 
     def list_blocks(self, label: Optional[str] = None, templates_only: Optional[bool] = True) -> List[Block]:
         params = {"label": label, "templates_only": templates_only}
+<<<<<<< HEAD
         response = requests.get(f"{self.base_url}/{self.api_prefix}/blocks", params=params, headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/blocks/", params=params))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to list blocks: {response.text}")
 
-        if label == "human":
-            return [Human(**human) for human in response.json()]
-        elif label == "persona":
-            return [Persona(**persona) for persona in response.json()]
-        else:
-            return [Block(**block) for block in response.json()]
+        match label:
+            case "human":
+                Schema = Human
+            case "persona":
+                Schema = Persona
+            case _:
+                Schema = Block
 
-    def create_block(self, label: str, name: str, text: str) -> Block:  #
+        return [Schema(**block) for block in response.json()]
+
+    def list_personas(self) -> ListPersonasResponse:
+        response = self.run_sync(self.httpx_client.get("/persona/"))
+        return ListPersonasResponse(**response.json())
+
+    def create_persona(self, name: str, persona: str) -> Persona:
+        data = {"name": name, "text": persona}
+        response = self.run_sync(self.httpx_client.post("/personas/", json=data))
+        return Persona(**response.json())
+
+    def create_block(self, label: str, name: str, text: str) -> Block:
         request = CreateBlock(label=label, name=name, value=text)
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/blocks", json=request.model_dump(), headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/blocks/", json=request.model_dump()))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to create block: {response.text}")
-        if request.label == "human":
-            return Human(**response.json())
-        elif request.label == "persona":
-            return Persona(**response.json())
-        else:
-            return Block(**response.json())
+        match label:
+            case "human":
+                Schema = Human
+            case "persona":
+                Schema = Persona
+            case _:
+                Schema = Block
+
+        return Schema(**response.json())
 
     def update_block(self, block_id: str, name: Optional[str] = None, text: Optional[str] = None) -> Block:
         request = UpdateBlock(id=block_id, name=name, value=text)
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/blocks/{block_id}", json=request.model_dump(), headers=self.headers)
+=======
+        response = self.run_sync(self.httpx.post(f"{self.base_url}/api/blocks/{block_id}", json=request.model_dump()))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to update block: {response.text}")
         return Block(**response.json())
 
     def get_block(self, block_id: str) -> Block:
+<<<<<<< HEAD
         response = requests.get(f"{self.base_url}/{self.api_prefix}/blocks/{block_id}", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx.get(f"{self.base_url}/api/blocks/{block_id}"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code == 404:
             return None
         elif response.status_code != 200:
+            raise ValueError(f"Failed to get persona: {response.text}")
+        return Persona(**response.json())
+
+    def get_human(self, name: str) -> Human:
+        response = self.run_sync(self.httpx_client.get("/humans/{name}/"))
+        if response.status_code == 404:
+            return None
+        return Human(**response.json())
+
+    def get_block(self, block_id: str) -> Block:
+        response = self.run_sync(self.httpx_client.get(f"/blocks/{block_id}/"))
+        if response.status_code != 200:
             raise ValueError(f"Failed to get block: {response.text}")
         return Block(**response.json())
 
     def get_block_id(self, name: str, label: str) -> str:
         params = {"name": name, "label": label}
+<<<<<<< HEAD
         response = requests.get(f"{self.base_url}/{self.api_prefix}/blocks", params=params, headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/blocks/", params=params))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to get block ID: {response.text}")
         blocks = [Block(**block) for block in response.json()]
-        if len(blocks) == 0:
+        if not blocks:
             return None
-        elif len(blocks) > 1:
-            raise ValueError(f"Multiple blocks found with name {name}")
+        if len(blocks) > 1:
+            raise ValueError(f"Multiple blocks found with name {name} and label {label}")
         return blocks[0].id
 
     def delete_block(self, id: str) -> Block:
+<<<<<<< HEAD
         response = requests.delete(f"{self.base_url}/{self.api_prefix}/blocks/{id}", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.delete(f"/blocks/{id}/"))
+>>>>>>> refs/heads/integration-block-fixes
         assert response.status_code == 200, f"Failed to delete block: {response.text}"
         if response.status_code != 200:
             raise ValueError(f"Failed to delete block: {response.text}")
         return Block(**response.json())
 
     def list_humans(self):
+<<<<<<< HEAD
         """
         List available human block templates
 
@@ -818,6 +1080,13 @@ class RESTClient(AbstractClient):
             human (Human): Human block
         """
         return self.create_block(label="human", name=name, text=text)
+=======
+        blocks = self.run_sync(self.list_blocks(label="human"))
+        return [Human(**block.model_dump()) for block in blocks]
+
+    def create_human(self, name: str, text: str) -> Human:
+        return self.run_sync(self.create_block(label="human", name=name, text=text))
+>>>>>>> refs/heads/integration-block-fixes
 
     def update_human(self, human_id: str, name: Optional[str] = None, text: Optional[str] = None) -> Human:
         """
@@ -831,12 +1100,17 @@ class RESTClient(AbstractClient):
             human (Human): Updated human block
         """
         request = UpdateHuman(id=human_id, name=name, value=text)
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/blocks/{human_id}", json=request.model_dump(), headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/blocks/{human_id}", json=request.model_dump()))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to update human: {response.text}")
         return Human(**response.json())
 
     def list_personas(self):
+<<<<<<< HEAD
         """
         List available persona block templates
 
@@ -858,6 +1132,13 @@ class RESTClient(AbstractClient):
             persona (Persona): Persona block
         """
         return self.create_block(label="persona", name=name, text=text)
+=======
+        blocks = self.run_sync(self.list_blocks(label="persona"))
+        return [Persona(**block.model_dump()) for block in blocks]
+
+    def create_persona(self, name: str, text: str) -> Persona:
+        return self.run_sync(self.create_block(label="persona", name=name, text=text))
+>>>>>>> refs/heads/integration-block-fixes
 
     def update_persona(self, persona_id: str, name: Optional[str] = None, text: Optional[str] = None) -> Persona:
         """
@@ -871,12 +1152,17 @@ class RESTClient(AbstractClient):
             persona (Persona): Updated persona block
         """
         request = UpdatePersona(id=persona_id, name=name, value=text)
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/blocks/{persona_id}", json=request.model_dump(), headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/blocks/{persona_id}/", json=request.model_dump()))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to update persona: {response.text}")
         return Persona(**response.json())
 
     def get_persona(self, persona_id: str) -> Persona:
+<<<<<<< HEAD
         """
         Get a persona block template
 
@@ -998,16 +1284,57 @@ class RESTClient(AbstractClient):
 
     def get_job(self, job_id: str) -> Job:
         response = requests.get(f"{self.base_url}/{self.api_prefix}/jobs/{job_id}", headers=self.headers)
+=======
+        return self.run_sync(self.get_block(persona_id))
+
+    def get_persona_id(self, name: str) -> str:
+        return self.run_sync(self.get_block_id(name, "persona"))
+
+    def delete_persona(self, persona_id: str) -> Persona:
+        return self.run_sync(self.delete_block(persona_id))
+
+    def get_human(self, human_id: str) -> Human:
+        return self.run_sync(self.get_block(human_id))
+
+    def get_human_id(self, name: str) -> str:
+        return self.run_sync(self.get_block_id(name, "human"))
+
+    def delete_human(self, human_id: str) -> Human:
+        return self.run_sync(self.delete_block(human_id))
+
+    # sources
+    def list_sources(self) -> List[Source]:
+        """List loaded sources"""
+        response = self.run_sync(self.httpx_client.get("/sources/"))
+        response_json = response.json()
+        return [i for i in response_json["sources"]]
+
+    def delete_source(self, source_id: str):
+        """Delete a source and associated data (including attached to agents)"""
+        response = self.run_sync(self.httpx_client.delete(f"/sources/{source_id}/"))
+        assert response.status_code == 200, f"Failed to delete source: {response.text}"
+
+    def get_job(self, job_id: str) -> Job:
+        response = self.httpx_client.get(f"/jobs/{job_id}")
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to get job: {response.text}")
         return Job(**response.json())
 
     def list_jobs(self):
+<<<<<<< HEAD
         response = requests.get(f"{self.base_url}/{self.api_prefix}/jobs", headers=self.headers)
         return [Job(**job) for job in response.json()]
 
     def list_active_jobs(self):
         response = requests.get(f"{self.base_url}/{self.api_prefix}/jobs/active", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/jobs"))
+        return [Job(**job) for job in response.json()]
+
+    def list_active_jobs(self):
+        response = self.run_sync(self.httpx_client.get(f"{self.base_url}/jobs/active"))
+>>>>>>> refs/heads/integration-block-fixes
         return [Job(**job) for job in response.json()]
 
     def load_data(self, connector: DataConnector, source_name: str):
@@ -1028,7 +1355,11 @@ class RESTClient(AbstractClient):
         files = {"file": open(filename, "rb")}
 
         # create job
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/sources/{source_id}/upload", files=files, headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/sources/{source_id}/upload/", files=files))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to upload file to source: {response.text}")
 
@@ -1036,7 +1367,7 @@ class RESTClient(AbstractClient):
         if blocking:
             # wait until job is completed
             while True:
-                job = self.get_job(job.id)
+                job = self.run_sync(self.get_job(job.id))
                 if job.status == JobStatus.completed:
                     break
                 elif job.status == JobStatus.failed:
@@ -1055,11 +1386,16 @@ class RESTClient(AbstractClient):
             source (Source): Created source
         """
         payload = {"name": name}
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/sources", json=payload, headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post("/sources/", json=payload))
+>>>>>>> refs/heads/integration-block-fixes
         response_json = response.json()
         return Source(**response_json)
 
     def list_attached_sources(self, agent_id: str) -> List[Source]:
+<<<<<<< HEAD
         """
         List sources attached to an agent
 
@@ -1070,6 +1406,9 @@ class RESTClient(AbstractClient):
             sources (List[Source]): List of sources
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/agents/{agent_id}/sources", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/agents/{agent_id}/sources"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to list attached sources: {response.text}")
         return [Source(**source) for source in response.json()]
@@ -1086,7 +1425,11 @@ class RESTClient(AbstractClient):
             source (Source): Updated source
         """
         request = SourceUpdate(id=source_id, name=name)
+<<<<<<< HEAD
         response = requests.patch(f"{self.base_url}/{self.api_prefix}/sources/{source_id}", json=request.model_dump(), headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/sources/{source_id}", json=request.model_dump(exclude_none=True)))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to update source: {response.text}")
         return Source(**response.json())
@@ -1101,17 +1444,29 @@ class RESTClient(AbstractClient):
             source_name (str): Name of the source
         """
         params = {"agent_id": agent_id}
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/sources/{source_id}/attach", params=params, headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/sources/{source_id}/attach/", params=params))
+>>>>>>> refs/heads/integration-block-fixes
         assert response.status_code == 200, f"Failed to attach source to agent: {response.text}"
 
     def detach_source(self, source_id: str, agent_id: str):
         """Detach a source from an agent"""
         params = {"agent_id": str(agent_id)}
+<<<<<<< HEAD
         response = requests.post(f"{self.base_url}/{self.api_prefix}/sources/{source_id}/detach", params=params, headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.post(f"/sources/{source_id}/detach/", params=params))
+>>>>>>> refs/heads/integration-block-fixes
         assert response.status_code == 200, f"Failed to detach source from agent: {response.text}"
 
     # server configuration commands
+    def list_models(self) -> List[LLMConfig]:
+        response = self.run_sync(self.httpx_client.get("/models/"))
+        return response.json()
 
+<<<<<<< HEAD
     def list_models(self):
         """
         List available LLM models
@@ -1135,10 +1490,15 @@ class RESTClient(AbstractClient):
         if response.status_code != 200:
             raise ValueError(f"Failed to list embedding models: {response.text}")
         return [EmbeddingConfig(**model) for model in response.json()]
+=======
+    def get_config(self) -> ConfigResponse:
+        response = self.run_sync(self.httpx_client.get("/config/"))
+        return ConfigResponse(**response.json())
+>>>>>>> refs/heads/integration-block-fixes
 
     # tools
-
     def get_tool_id(self, tool_name: str):
+<<<<<<< HEAD
         """
         Get the ID of a tool
 
@@ -1149,6 +1509,9 @@ class RESTClient(AbstractClient):
             id (str): ID of the tool (`None` if not found)
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/tools/name/{tool_name}", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.get(f"/tools/name/{tool_name}/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code == 404:
             return None
         elif response.status_code != 200:
@@ -1182,7 +1545,9 @@ class RESTClient(AbstractClient):
         # parse source code/schema
         source_code = parse_source_code(func)
         source_type = "python"
+        tool_name = json_schema["name"]
 
+<<<<<<< HEAD
         # TODO: Check if tool already exists
         # if name:
         #     tool_id = self.get_tool_id(tool_name=name)
@@ -1192,6 +1557,17 @@ class RESTClient(AbstractClient):
         # call server function
         request = ToolCreate(source_type=source_type, source_code=source_code, name=name, tags=tags)
         response = requests.post(f"{self.base_url}/{self.api_prefix}/tools", json=request.model_dump(), headers=self.headers)
+=======
+        assert name is None or name == tool_name, f"Tool name {name} does not match schema name {tool_name}"
+
+        # make REST request
+        request = ToolCreate(source_type=source_type, source_code=source_code, name=tool_name, json_schema=json_schema, tags=tags)
+        response = self.run_sync(
+            self.httpx_client.post("/tools/"),
+            json=request.model_dump(exclude_none=True),
+            params={"update": update},
+        )
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to create tool: {response.text}")
         return Tool(**response.json())
@@ -1222,12 +1598,18 @@ class RESTClient(AbstractClient):
 
         source_type = "python"
 
+<<<<<<< HEAD
         request = ToolUpdate(id=id, source_type=source_type, source_code=source_code, tags=tags, name=name)
         response = requests.patch(f"{self.base_url}/{self.api_prefix}/tools/{id}", json=request.model_dump(), headers=self.headers)
+=======
+        request = ToolUpdate(id=id, source_type=source_type, source_code=source_code, tags=tags, json_schema=json_schema, name=tool_name)
+        response = self.run_sync(self.httpx_client.post(f"/tools/{id}/", json=request.model_dump()))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to update tool: {response.text}")
         return Tool(**response.json())
 
+<<<<<<< HEAD
     # def create_tool(
     #    self,
     #    func,
@@ -1275,11 +1657,16 @@ class RESTClient(AbstractClient):
             tools (List[Tool]): List of tools
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/tools", headers=self.headers)
+=======
+    def list_tools(self) -> List[Tool]:
+        response = self.run_sync(self.httpx_client.get("/tools/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code != 200:
             raise ValueError(f"Failed to list tools: {response.text}")
         return [Tool(**tool) for tool in response.json()]
 
     def delete_tool(self, name: str):
+<<<<<<< HEAD
         """
         Delete a tool given the ID.
 
@@ -1301,6 +1688,14 @@ class RESTClient(AbstractClient):
             tool (Tool): Tool
         """
         response = requests.get(f"{self.base_url}/{self.api_prefix}/tools/{id}", headers=self.headers)
+=======
+        response = self.run_sync(self.httpx_client.delete(f"/tools/{name}/"))
+        if response.status_code != 200:
+            raise ValueError(f"Failed to delete tool: {response.text}")
+
+    def get_tool(self, name: str):
+        response = self.run_sync(self.httpx_client.get(f"/tools/{name}/"))
+>>>>>>> refs/heads/integration-block-fixes
         if response.status_code == 404:
             return None
         elif response.status_code != 200:
@@ -1342,6 +1737,7 @@ class LocalClient(AbstractClient):
         auto_save: bool = False,
         user_id: Optional[str] = None,
         debug: bool = False,
+        config: "MemGPTConfig" = None,
     ):
         """
         Initializes a new instance of Client class.
@@ -1353,6 +1749,7 @@ class LocalClient(AbstractClient):
         """
         self.auto_save = auto_save
 
+<<<<<<< HEAD
         # determine user_id (pulled from local config)
         config = MemGPTConfig.load()
         if user_id:
@@ -1381,16 +1778,17 @@ class LocalClient(AbstractClient):
             # update config
             config.anon_clientid = str(self.user_id)
             config.save()
+=======
+        self.interface = QueuingInterface(debug=debug)
+        self.server = SyncServer(default_interface_factory=lambda: self.interface)
+
+        self.user_id = user_id or self.server.get_current_user().id
+>>>>>>> refs/heads/integration-block-fixes
 
     # agents
 
     def list_agents(self) -> List[AgentState]:
-        self.interface.clear()
-
-        # TODO: fix the server function
-        # return self.server.list_agents(user_id=self.user_id)
-
-        return self.server.ms.list_agents(user_id=self.user_id)
+        return self.server.list_agents(self.user_id)
 
     def agent_exists(self, agent_id: Optional[str] = None, agent_name: Optional[str] = None) -> bool:
         """
@@ -1410,9 +1808,9 @@ class LocalClient(AbstractClient):
             raise ValueError(f"Only one of agent_id or agent_name can be provided")
         existing = self.list_agents()
         if agent_id:
-            return str(agent_id) in [str(agent.id) for agent in existing]
+            return agent_id in [agent.id for agent in existing]
         else:
-            return agent_name in [str(agent.name) for agent in existing]
+            return agent_name in [agent.name for agent in existing]
 
     def create_agent(
         self,
@@ -1421,14 +1819,19 @@ class LocalClient(AbstractClient):
         embedding_config: Optional[EmbeddingConfig] = None,
         llm_config: Optional[LLMConfig] = None,
         # memory
-        memory: Memory = ChatMemory(human=get_human_text(DEFAULT_HUMAN), persona=get_persona_text(DEFAULT_PERSONA)),
+        memory: Memory = BlockChatMemory(
+            blocks=[
+                Block(name="human block", value=get_human_text(settings.human), label="human"),
+                Block(name="persona block", value=get_persona_text(settings.persona), label="persona"),
+            ]
+        ),
         # system
         system: Optional[str] = None,
         # tools
         tools: Optional[List[str]] = None,
         include_base_tools: Optional[bool] = True,
         # metadata
-        metadata: Optional[Dict] = {"human:": DEFAULT_HUMAN, "persona": DEFAULT_PERSONA},
+        metadata: Optional[Dict] = {"human:": settings.human, "persona": settings.persona},
         description: Optional[str] = None,
     ) -> AgentState:
         """Create an agent
@@ -1449,7 +1852,7 @@ class LocalClient(AbstractClient):
         """
 
         if name and self.agent_exists(agent_name=name):
-            raise ValueError(f"Agent with name {name} already exists (user_id={self.user_id})")
+            raise ValueError(f"Agent with name {name} already exists ({self.user_id=})")
 
         # construct list of tools
         tool_names = []
@@ -1956,9 +2359,13 @@ class LocalClient(AbstractClient):
         # call server function
         return self.server.create_tool(
             ToolCreate(
-                source_type=tool.source_type, source_code=tool.source_code, name=tool.name, json_schema=tool.json_schema, tags=tool.tags
+                source_type=tool.source_type,
+                source_code=tool.source_code,
+                name=tool.name,
+                json_schema=tool.json_schema,
+                tags=tool.tags,
+                user_id=self.user_id,
             ),
-            user_id=self.user_id,
             update=update,
         )
 
@@ -1992,9 +2399,13 @@ class LocalClient(AbstractClient):
 
         # call server function
         return self.server.create_tool(
-            # ToolCreate(source_type=source_type, source_code=source_code, name=tool_name, json_schema=json_schema, tags=tags),
-            ToolCreate(source_type=source_type, source_code=source_code, name=name, tags=tags),
-            user_id=self.user_id,
+            ToolCreate(
+                source_type=source_type,
+                source_code=source_code,
+                name=name,
+                tags=tags,
+                user_id=self.user_id,
+            ),
             update=update,
         )
 
@@ -2024,7 +2435,9 @@ class LocalClient(AbstractClient):
 
         source_type = "python"
 
-        return self.server.update_tool(ToolUpdate(id=id, source_type=source_type, source_code=source_code, tags=tags, name=name))
+        return self.server.update_tool(
+            ToolUpdate(id=id, source_type=source_type, source_code=source_code, tags=tags, name=name, user_id=self.user_id)
+        )
 
     def list_tools(self):
         """

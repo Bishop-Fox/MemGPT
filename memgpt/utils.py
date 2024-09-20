@@ -15,6 +15,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from pathlib import Path
 from typing import List, Union, _GenericAlias, get_type_hints
 from urllib.parse import urljoin, urlparse
 
@@ -22,14 +23,13 @@ import demjson3 as demjson
 import pytz
 import tiktoken
 
-import memgpt
 from memgpt.constants import (
     CLI_WARNING_PREFIX,
-    CORE_MEMORY_HUMAN_CHAR_LIMIT,
-    CORE_MEMORY_PERSONA_CHAR_LIMIT,
     FUNCTION_RETURN_CHAR_LIMIT,
     MEMGPT_DIR,
     TOOL_CALL_ID_MAX_LEN,
+    CORE_MEMORY_HUMAN_CHAR_LIMIT,
+    CORE_MEMORY_PERSONA_CHAR_LIMIT,
 )
 from memgpt.schemas.openai.chat_completion_response import ChatCompletionResponse
 
@@ -952,69 +952,52 @@ def list_agent_config_files(sort="last_modified"):
     return files
 
 
+def _list_block_files(blocktype: str) -> List[Path]:
+    """gets all the sorted example files for a given block type
+    Args:
+        blocktype (str): the block type (human, persona, banana etc) to list
+    Returns:
+        List[str]: list of file names
+    """
+    all_files = []
+    default_parent = Path(__file__).parent / "seeds" / blocktype / "examples"
+    user_parent = Path(MEMGPT_DIR) / blocktype
+    for parent in [default_parent, user_parent]:
+        if parent.exists():
+            all_files.extend(parent.glob("*.txt"))
+    return all_files
+
+
 def list_human_files():
     """List all humans files"""
-    defaults_dir = os.path.join(memgpt.__path__[0], "humans", "examples")
-    user_dir = os.path.join(MEMGPT_DIR, "humans")
-
-    memgpt_defaults = os.listdir(defaults_dir)
-    memgpt_defaults = [os.path.join(defaults_dir, f) for f in memgpt_defaults if f.endswith(".txt")]
-
-    if os.path.exists(user_dir):
-        user_added = os.listdir(user_dir)
-        user_added = [os.path.join(user_dir, f) for f in user_added]
-    else:
-        user_added = []
-    return memgpt_defaults + user_added
+    return _list_block_files("humans")
 
 
 def list_persona_files():
     """List all personas files"""
-    defaults_dir = os.path.join(memgpt.__path__[0], "personas", "examples")
-    user_dir = os.path.join(MEMGPT_DIR, "personas")
+    return _list_block_files("personas")
 
-    memgpt_defaults = os.listdir(defaults_dir)
-    memgpt_defaults = [os.path.join(defaults_dir, f) for f in memgpt_defaults if f.endswith(".txt")]
 
-    if os.path.exists(user_dir):
-        user_added = os.listdir(user_dir)
-        user_added = [os.path.join(user_dir, f) for f in user_added]
-    else:
-        user_added = []
-    return memgpt_defaults + user_added
+def _get_block_text(name: str, blocktype: str, enforce_limit=True):
+    """actually extract the text from the seeed file"""
+    listed = globals()[f"list_{blocktype}_files"]()
+    core_memory_limit = globals()[f"CORE_MEMORY_{blocktype.upper()}_CHAR_LIMIT"]
+    try:
+        if match := next(file for file in listed if name == file.stem):
+            text = match.read_text(encoding="utf-8").strip()
+            if enforce_limit and len(text) > core_memory_limit:
+                raise ValueError(f"Contents of {name}.txt is over the character limit ({len(text)} > {core_memory_limit})")
+            return text
+    except StopIteration as e:
+        raise ValueError(f"{blocktype} {name}.txt not found") from e
 
 
 def get_human_text(name: str, enforce_limit=True):
-    for file_path in list_human_files():
-        file = os.path.basename(file_path)
-        if f"{name}.txt" == file or name == file:
-            human_text = open(file_path, "r", encoding="utf-8").read().strip()
-            if enforce_limit and len(human_text) > CORE_MEMORY_HUMAN_CHAR_LIMIT:
-                raise ValueError(f"Contents of {name}.txt is over the character limit ({len(human_text)} > {CORE_MEMORY_HUMAN_CHAR_LIMIT})")
-            return human_text
-
-    raise ValueError(f"Human {name}.txt not found")
+    return _get_block_text(name, "human", enforce_limit)
 
 
 def get_persona_text(name: str, enforce_limit=True):
-    for file_path in list_persona_files():
-        file = os.path.basename(file_path)
-        if f"{name}.txt" == file or name == file:
-            persona_text = open(file_path, "r", encoding="utf-8").read().strip()
-            if enforce_limit and len(persona_text) > CORE_MEMORY_PERSONA_CHAR_LIMIT:
-                raise ValueError(
-                    f"Contents of {name}.txt is over the character limit ({len(persona_text)} > {CORE_MEMORY_PERSONA_CHAR_LIMIT})"
-                )
-            return persona_text
-
-    raise ValueError(f"Persona {name}.txt not found")
-
-
-def get_human_text(name: str):
-    for file_path in list_human_files():
-        file = os.path.basename(file_path)
-        if f"{name}.txt" == file or name == file:
-            return open(file_path, "r", encoding="utf-8").read().strip()
+    return _get_block_text(name, "persona", enforce_limit)
 
 
 def get_schema_diff(schema_a, schema_b):

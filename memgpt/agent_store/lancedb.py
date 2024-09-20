@@ -6,8 +6,9 @@ from typing import Dict, Iterator, List, Optional
 
 from lancedb.pydantic import LanceModel, Vector
 
-from memgpt.agent_store.storage import StorageConnector, TableType
+from memgpt.agent_store.storage import StorageConnector
 from memgpt.config import AgentConfig, MemGPTConfig
+from memgpt.schemas.enums import TableType
 from memgpt.schemas.message import Message, Passage, Record
 
 """ Initial implementation - not complete """

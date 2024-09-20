@@ -2,12 +2,19 @@ import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 
+<<<<<<< HEAD
+=======
+# These can be forward refs, but because Fastapi needs them at runtime the must be imported normally
+from uuid import UUID
+
+>>>>>>> refs/heads/integration-block-fixes
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.responses import StreamingResponse
 
 from memgpt.schemas.agent import AgentState, CreateAgent, UpdateAgentState
 from memgpt.schemas.enums import MessageRole, MessageStreamStatus
+<<<<<<< HEAD
 from memgpt.schemas.memgpt_message import (
     LegacyMemGPTMessage,
     MemGPTMessage,
@@ -36,11 +43,37 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 
 
 @router.get("/", response_model=List[AgentState], operation_id="list_agents")
+=======
+from memgpt.schemas.memgpt_message import LegacyMemGPTMessage, MemGPTMessage
+from memgpt.schemas.memgpt_request import MemGPTRequest
+from memgpt.schemas.memgpt_response import MemGPTResponse
+from memgpt.schemas.memory import ArchivalMemorySummary, Memory, RecallMemorySummary
+from memgpt.schemas.message import Message
+from memgpt.schemas.passage import Passage
+from memgpt.server.rest_api.interface import StreamingServerInterface
+from memgpt.server.rest_api.utils import get_memgpt_server, sse_async_generator
+from memgpt.server.schemas.agents import (
+    GetAgentMessagesCursorRequest,
+    GetAgentMessagesResponse,
+    InsertAgentArchivalMemoryRequest,
+)
+from memgpt.server.server import SyncServer
+from memgpt.utils import deduplicate
+
+router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+@router.get("/", response_model=List[AgentState])
+>>>>>>> refs/heads/integration-block-fixes
 def list_agents(
     server: "SyncServer" = Depends(get_memgpt_server),
 ):
     """
     List all agents associated with a given user.
+<<<<<<< HEAD
+=======
+
+>>>>>>> refs/heads/integration-block-fixes
     This endpoint retrieves a list of all agents and their configurations associated with the specified user ID.
     """
     actor = server.get_current_user()
@@ -48,7 +81,11 @@ def list_agents(
     return server.list_agents(user_id=actor.id)
 
 
+<<<<<<< HEAD
 @router.post("/", response_model=AgentState, operation_id="create_agent")
+=======
+@router.post("/", response_model=AgentState)
+>>>>>>> refs/heads/integration-block-fixes
 def create_agent(
     agent: CreateAgent = Body(...),
     server: "SyncServer" = Depends(get_memgpt_server),
@@ -62,13 +99,18 @@ def create_agent(
     return server.create_agent(agent, user_id=actor.id)
 
 
+<<<<<<< HEAD
 @router.patch("/{agent_id}", response_model=AgentState, operation_id="update_agent")
+=======
+@router.post("/{agent_id}", tags=["agents"], response_model=AgentState)
+>>>>>>> refs/heads/integration-block-fixes
 def update_agent(
     agent_id: str,
     update_agent: UpdateAgentState = Body(...),
     server: "SyncServer" = Depends(get_memgpt_server),
 ):
     """Update an exsiting agent"""
+<<<<<<< HEAD
     actor = server.get_current_user()
 
     update_agent.id = agent_id
@@ -76,6 +118,15 @@ def update_agent(
 
 
 @router.get("/{agent_id}", response_model=AgentState, operation_id="get_agent")
+=======
+
+    update_agent.id = agent_id
+    actor = server.get_current_user()
+    return server.update_agent(update_agent, user_id=actor.id)
+
+
+@router.get("/{agent_id}", response_model=AgentState)
+>>>>>>> refs/heads/integration-block-fixes
 def get_agent_state(
     agent_id: str,
     server: "SyncServer" = Depends(get_memgpt_server),
@@ -83,8 +134,13 @@ def get_agent_state(
     """
     Get the state of the agent.
     """
+<<<<<<< HEAD
     actor = server.get_current_user()
 
+=======
+
+    actor = server.get_current_user()
+>>>>>>> refs/heads/integration-block-fixes
     if not server.ms.get_agent(user_id=actor.id, agent_id=agent_id):
         # agent does not exist
         raise HTTPException(status_code=404, detail=f"Agent agent_id={agent_id} not found.")
@@ -92,7 +148,11 @@ def get_agent_state(
     return server.get_agent_state(user_id=actor.id, agent_id=agent_id)
 
 
+<<<<<<< HEAD
 @router.delete("/{agent_id}", response_model=None, operation_id="delete_agent")
+=======
+@router.delete("/{agent_id}")
+>>>>>>> refs/heads/integration-block-fixes
 def delete_agent(
     agent_id: str,
     server: "SyncServer" = Depends(get_memgpt_server),
@@ -100,6 +160,7 @@ def delete_agent(
     """
     Delete an agent.
     """
+<<<<<<< HEAD
     actor = server.get_current_user()
 
     return server.delete_agent(user_id=actor.id, agent_id=agent_id)
@@ -119,6 +180,14 @@ def get_agent_sources(
 
 
 @router.get("/{agent_id}/memory/messages", response_model=List[Message], operation_id="list_agent_in_context_messages")
+=======
+
+    actor = server.get_current_user()
+    return server.delete_agent(user_id=actor.id, agent_id=agent_id)
+
+
+@router.get("/{agent_id}/memory/messages", response_model=List[Message])
+>>>>>>> refs/heads/integration-block-fixes
 def get_agent_in_context_messages(
     agent_id: str,
     server: "SyncServer" = Depends(get_memgpt_server),
@@ -130,20 +199,32 @@ def get_agent_in_context_messages(
     return server.get_in_context_messages(agent_id=agent_id)
 
 
+<<<<<<< HEAD
 @router.get("/{agent_id}/memory", response_model=Memory, operation_id="get_agent_memory")
+=======
+@router.get("/{agent_id}/memory", response_model=Memory)
+>>>>>>> refs/heads/integration-block-fixes
 def get_agent_memory(
     agent_id: str,
     server: "SyncServer" = Depends(get_memgpt_server),
 ):
     """
     Retrieve the memory state of a specific agent.
+<<<<<<< HEAD
+=======
+
+>>>>>>> refs/heads/integration-block-fixes
     This endpoint fetches the current memory state of the agent identified by the user ID and agent ID.
     """
 
     return server.get_agent_memory(agent_id=agent_id)
 
 
+<<<<<<< HEAD
 @router.patch("/{agent_id}/memory", response_model=Memory, operation_id="update_agent_memory")
+=======
+@router.post("/{agent_id}/memory", response_model=Memory)
+>>>>>>> refs/heads/integration-block-fixes
 def update_agent_memory(
     agent_id: str,
     request: Dict = Body(...),
@@ -151,15 +232,27 @@ def update_agent_memory(
 ):
     """
     Update the core memory of a specific agent.
+<<<<<<< HEAD
     This endpoint accepts new memory contents (human and persona) and updates the core memory of the agent identified by the user ID and agent ID.
     """
     actor = server.get_current_user()
 
+=======
+
+    This endpoint accepts new memory contents (human and persona) and updates the core memory of the agent identified by the user ID and agent ID.
+    """
+
+    actor = server.get_current_user()
+>>>>>>> refs/heads/integration-block-fixes
     memory = server.update_agent_core_memory(user_id=actor.id, agent_id=agent_id, new_memory_contents=request)
     return memory
 
 
+<<<<<<< HEAD
 @router.get("/{agent_id}/memory/recall", response_model=RecallMemorySummary, operation_id="get_agent_recall_memory_summary")
+=======
+@router.get("/{agent_id}/memory/recall", response_model=RecallMemorySummary)
+>>>>>>> refs/heads/integration-block-fixes
 def get_agent_recall_memory_summary(
     agent_id: str,
     server: "SyncServer" = Depends(get_memgpt_server),
@@ -171,7 +264,11 @@ def get_agent_recall_memory_summary(
     return server.get_recall_memory_summary(agent_id=agent_id)
 
 
+<<<<<<< HEAD
 @router.get("/{agent_id}/memory/archival", response_model=ArchivalMemorySummary, operation_id="get_agent_archival_memory_summary")
+=======
+@router.get("/{agent_id}/memory/archival", response_model=ArchivalMemorySummary)
+>>>>>>> refs/heads/integration-block-fixes
 def get_agent_archival_memory_summary(
     agent_id: str,
     server: "SyncServer" = Depends(get_memgpt_server),
@@ -183,9 +280,15 @@ def get_agent_archival_memory_summary(
     return server.get_archival_memory_summary(agent_id=agent_id)
 
 
+<<<<<<< HEAD
 @router.get("/{agent_id}/archival", response_model=List[Passage], operation_id="list_agent_archival_memory")
 def get_agent_archival_memory(
     agent_id: str,
+=======
+@router.get("/{agent_id}/archival", response_model=List[Passage])
+def get_agent_archival_memory(
+    agent_id: "str",
+>>>>>>> refs/heads/integration-block-fixes
     server: "SyncServer" = Depends(get_memgpt_server),
     after: Optional[int] = Query(None, description="Unique ID of the memory to start the query range at."),
     before: Optional[int] = Query(None, description="Unique ID of the memory to end the query range at."),
@@ -209,10 +312,17 @@ def get_agent_archival_memory(
     )
 
 
+<<<<<<< HEAD
 @router.post("/{agent_id}/archival", response_model=List[Passage], operation_id="create_agent_archival_memory")
 def insert_agent_archival_memory(
     agent_id: str,
     request: CreateArchivalMemory = Body(...),
+=======
+@router.post("/{agent_id}/archival", response_model=List[Passage])
+def insert_agent_archival_memory(
+    agent_id: "str",
+    request: InsertAgentArchivalMemoryRequest = Body(...),
+>>>>>>> refs/heads/integration-block-fixes
     server: "SyncServer" = Depends(get_memgpt_server),
 ):
     """
@@ -220,6 +330,7 @@ def insert_agent_archival_memory(
     """
     actor = server.get_current_user()
 
+<<<<<<< HEAD
     return server.insert_archival_memory(user_id=actor.id, agent_id=agent_id, memory_contents=request.text)
 
 
@@ -230,6 +341,15 @@ def delete_agent_archival_memory(
     agent_id: str,
     memory_id: str,
     # memory_id: str = Query(..., description="Unique ID of the memory to be deleted."),
+=======
+    return server.insert_archival_memory(user_id=actor.id, agent_id=agent_id, memory_contents=request.content)
+
+
+@router.delete("/{agent_id}/archival")
+def delete_agent_archival_memory(
+    agent_id: "str",
+    memory_id: str = Query(..., description="Unique ID of the memory to be deleted."),
+>>>>>>> refs/heads/integration-block-fixes
     server: "SyncServer" = Depends(get_memgpt_server),
 ):
     """
@@ -241,6 +361,7 @@ def delete_agent_archival_memory(
     return JSONResponse(status_code=status.HTTP_200_OK, content={"message": f"Memory id={memory_id} successfully deleted"})
 
 
+<<<<<<< HEAD
 @router.get("/{agent_id}/messages", response_model=Union[List[Message], List[MemGPTMessageUnion]], operation_id="list_agent_messages")
 def get_agent_messages(
     agent_id: str,
@@ -279,6 +400,63 @@ def update_message(
 
 
 @router.post("/{agent_id}/messages", response_model=MemGPTResponse, operation_id="create_agent_message")
+=======
+@router.get("/{agent_id}/messages", response_model=List[Message])
+def get_agent_messages(
+    agent_id: "str",
+    server: "SyncServer" = Depends(get_memgpt_server),
+    start: int = Query(..., description="Message index to start on (reverse chronological)."),
+    count: int = Query(..., description="How many messages to retrieve."),
+):
+    """
+    Retrieve the in-context messages of a specific agent. Paginated, provide start and count to iterate.
+    """
+    # Validate with the Pydantic model (optional)
+    actor = server.get_current_user()
+
+    # this was in the migrated code - confirm this is incorrect?
+    # return server.get_agent_recall_cursor(user_id=actor.id, agent_id=agent_id, before=before, limit=limit, reverse=True)
+    return server.get_agent_messages(user_id=actor.id, agent_id=agent_id, start=start, count=count)
+
+
+@router.get("/{agent_id}/messages-cursor", response_model=GetAgentMessagesResponse)
+def get_agent_messages_cursor(
+    agent_id: UUID,
+    server: "SyncServer" = Depends(get_memgpt_server),
+    before: Optional[UUID] = Query(None, description="Message before which to retrieve the returned messages."),
+    limit: int = Query(10, description="Maximum number of messages to retrieve."),
+):
+    """
+    Retrieve the in-context messages of a specific agent. Paginated, provide start and count to iterate.
+    """
+    actor = server.get_current_user()
+    # Validate with the Pydantic model (optional)
+    request = GetAgentMessagesCursorRequest(agent_id=agent_id, before=before, limit=limit)
+
+    [_, messages] = server.get_agent_recall_cursor(
+        user_id=actor.id, agent_id=agent_id, before=request.before, limit=request.limit, reverse=True
+    )
+    return GetAgentMessagesResponse(messages=messages)
+
+
+@router.get("/{agent_id}/messages/context/", response_model=List[Message])
+def get_agent_messages_in_context(
+    agent_id: str,
+    start: int = Query(..., description="Message index to start on (reverse chronological)."),
+    count: int = Query(..., description="How many messages to retrieve."),
+    server: "SyncServer" = Depends(get_memgpt_server),
+):
+    """
+    Retrieve the in-context messages of a specific agent. Paginated, provide start and count to iterate.
+    """
+
+    actor = server.get_current_user()
+    messages = server.get_agent_messages(user_id=actor.id, agent_id=agent_id, start=start, count=count)
+    return messages
+
+
+@router.post("/{agent_id}/messages", response_model=MemGPTResponse)
+>>>>>>> refs/heads/integration-block-fixes
 async def send_message(
     agent_id: str,
     server: SyncServer = Depends(get_memgpt_server),
@@ -286,6 +464,7 @@ async def send_message(
 ):
     """
     Process a user message and return the agent's response.
+<<<<<<< HEAD
     This endpoint accepts a message from a user and processes it through the agent.
     It can optionally stream the response if 'stream_steps' or 'stream_tokens' is set to True.
     """
@@ -295,6 +474,14 @@ async def send_message(
     assert len(request.messages) == 1, f"Multiple messages not supported: {request.messages}"
     message = request.messages[0]
 
+=======
+
+    This endpoint accepts a message from a user and processes it through the agent.
+    It can optionally stream the response if 'stream' is set to True.
+    """
+    actor = server.get_current_user()
+    message = request.messages[0]
+>>>>>>> refs/heads/integration-block-fixes
     return await send_message_to_agent(
         server=server,
         agent_id=agent_id,
@@ -303,10 +490,17 @@ async def send_message(
         message=message.text,
         stream_steps=request.stream_steps,
         stream_tokens=request.stream_tokens,
+<<<<<<< HEAD
         return_message_object=request.return_message_object,
     )
 
 
+=======
+    )
+
+
+# TODO: cpacker should check this file
+>>>>>>> refs/heads/integration-block-fixes
 # TODO: move this into server.py?
 async def send_message_to_agent(
     server: SyncServer,
@@ -316,10 +510,17 @@ async def send_message_to_agent(
     message: str,
     stream_steps: bool,
     stream_tokens: bool,
+<<<<<<< HEAD
     return_message_object: bool,  # Should be True for Python Client, False for REST API
     chat_completion_mode: Optional[bool] = False,
     timestamp: Optional[datetime] = None,
     # related to whether or not we return `MemGPTMessage`s or `Message`s
+=======
+    chat_completion_mode: Optional[bool] = False,
+    timestamp: Optional[datetime] = None,
+    # related to whether or not we return `MemGPTMessage`s or `Message`s
+    return_message_object: bool = True,  # Should be True for Python Client, False for REST API
+>>>>>>> refs/heads/integration-block-fixes
 ) -> Union[StreamingResponse, MemGPTResponse]:
     """Split off into a separate function so that it can be imported in the /chat/completion proxy."""
     # TODO: @charles is this the correct way to handle?

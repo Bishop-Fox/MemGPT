@@ -21,6 +21,7 @@ from memgpt.interface import AgentInterface
 from memgpt.llm_api.llm_api_tools import create, is_context_overflow_error
 from memgpt.memory import ArchivalMemory, RecallMemory, summarize_messages
 from memgpt.metadata import MetadataStore
+from memgpt.orm.agent import Agent as SQLAgent
 from memgpt.persistence_manager import LocalStateManager
 from memgpt.schemas.agent import AgentState, AgentStepResponse
 from memgpt.schemas.block import Block
@@ -232,15 +233,15 @@ class Agent(BaseAgent):
         messages_total: Optional[int] = None,  # TODO remove?
         first_message_verify_mono: bool = True,  # TODO move to config?
     ):
-        assert isinstance(agent_state.memory, Memory), f"Memory object is not of type Memory: {type(agent_state.memory)}"
         # Hold a copy of the state that was used to init the agent
         self.agent_state = agent_state
-        assert isinstance(self.agent_state.memory, Memory), f"Memory object is not of type Memory: {type(self.agent_state.memory)}"
+        # assert isinstance(self.agent_state.memory, Memory), f"Memory object is not of type Memory: {type(self.agent_state.memory)}"
 
-        try:
-            self.link_tools(tools)
-        except Exception as e:
-            raise ValueError(f"Encountered an error while trying to link agent tools during initialization:\n{str(e)}")
+        # try:
+        #    self.link_tools(tools)
+        # except Exception as e:
+        #    raise ValueError(f"Encountered an error while trying to link agent tools during initialization:\n{str(e)}")
+        self.link_tools(tools)
 
         # gpt-4, gpt-3.5-turbo, ...
         self.model = self.agent_state.llm_config.model
@@ -250,8 +251,7 @@ class Agent(BaseAgent):
 
         # Initialize the memory object
         self.memory = self.agent_state.memory
-        assert isinstance(self.memory, Memory), f"Memory object is not of type Memory: {type(self.memory)}"
-        printd("Initialized memory object", self.memory.compile())
+        # assert isinstance(self.memory, Memory), f"Memory object is not of type Memory: {type(self.memory)}"
 
         # Interface must implement:
         # - internal_monologue
@@ -315,7 +315,7 @@ class Agent(BaseAgent):
         # Keep track of the total number of messages throughout all time
         self.messages_total = messages_total if messages_total is not None else (len(self._messages) - 1)  # (-system)
         self.messages_total_init = len(self._messages) - 1
-        printd(f"Agent initialized, self.messages_total={self.messages_total}")
+        printd(f"Agent initialized, {self.messages_total=}")
 
         # Create the agent in the DB
         self.update_state()
@@ -332,12 +332,10 @@ class Agent(BaseAgent):
     def link_tools(self, tools: List[Tool]):
         """Bind a tool object (schema + python function) to the agent object"""
 
+        agent_state_tool_names = [t.name for t in self.agent_state.tools]
         # tools
         for tool in tools:
-            assert tool, f"Tool is None - must be error in querying tool from DB"
-            assert tool.name in self.agent_state.tools, f"Tool {tool} not found in agent_state.tools"
-        for tool_name in self.agent_state.tools:
-            assert tool_name in [tool.name for tool in tools], f"Tool name {tool_name} not included in agent tool list"
+            assert tool.name in agent_state_tool_names, f"Tool {tool.name} not found in {agent_state_tool_names}"
 
         # Store the functions schemas (this is passed as an argument to ChatCompletion)
         self.functions = []
@@ -358,6 +356,7 @@ class Agent(BaseAgent):
         """Load a list of messages from recall storage"""
 
         # Pull the message objects from the database
+<<<<<<< HEAD
         message_objs = []
         for msg_id in message_ids:
             msg_obj = self.persistence_manager.recall_memory.storage.get(msg_id)
@@ -370,6 +369,10 @@ class Agent(BaseAgent):
             else:
                 printd(f"Warning - message ID {msg_id} not found in recall storage")
                 warnings.warn(f"Warning - message ID {msg_id} not found in recall storage")
+=======
+        message_objs = [self.persistence_manager.recall_memory.storage.get(msg_id) for msg_id in message_ids]
+        # assert all([isinstance(msg, Message) for msg in message_objs])
+>>>>>>> refs/heads/integration-block-fixes
 
         return message_objs
 
@@ -897,7 +900,7 @@ class Agent(BaseAgent):
                 raise e
 
     def summarize_messages_inplace(self, cutoff=None, preserve_last_N_messages=True, disallow_tool_as_first=True):
-        assert self.messages[0]["role"] == "system", f"self.messages[0] should be system (instead got {self.messages[0]})"
+        assert self._messages[0]["role"] == "system", f"self._messages[0] should be system (instead got {self._messages[0]})"
 
         # Start at index 1 (past the system message),
         # and collect messages for summarization until we reach the desired truncation token fraction (eg 50%)
@@ -905,7 +908,7 @@ class Agent(BaseAgent):
         token_counts = [count_tokens(str(msg)) for msg in self.messages]
         message_buffer_token_count = sum(token_counts[1:])  # no system message
         desired_token_count_to_summarize = int(message_buffer_token_count * MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC)
-        candidate_messages_to_summarize = self.messages[1:]
+        candidate_messages_to_summarize = self._messages[1:]
         token_counts = token_counts[1:]
 
         if preserve_last_N_messages:
@@ -939,9 +942,9 @@ class Agent(BaseAgent):
         # Try to make an assistant message come after the cutoff
         try:
             printd(f"Selected cutoff {cutoff} was a 'user', shifting one...")
-            if self.messages[cutoff]["role"] == "user":
+            if self._messages[cutoff]["role"] == "user":
                 new_cutoff = cutoff + 1
-                if self.messages[new_cutoff]["role"] == "user":
+                if self._messages[new_cutoff]["role"] == "user":
                     printd(f"Shifted cutoff {new_cutoff} is still a 'user', ignoring...")
                 cutoff = new_cutoff
         except IndexError:
@@ -949,7 +952,7 @@ class Agent(BaseAgent):
 
         # Make sure the cutoff isn't on a 'tool' or 'function'
         if disallow_tool_as_first:
-            while self.messages[cutoff]["role"] in ["tool", "function"] and cutoff < len(self.messages):
+            while self._messages[cutoff]["role"] in ["tool", "function"] and cutoff < len(self.messages):
                 printd(f"Selected cutoff {cutoff} was a 'tool', shifting one...")
                 cutoff += 1
 
@@ -975,7 +978,7 @@ class Agent(BaseAgent):
 
         # Metadata that's useful for the agent to see
         all_time_message_count = self.messages_total
-        remaining_message_count = len(self.messages[cutoff:])
+        remaining_message_count = len(self._messages[cutoff:])
         hidden_message_count = all_time_message_count - remaining_message_count
         summary_message_count = len(message_sequence_to_summarize)
         summary_message = package_summarize_message(summary, summary_message_count, hidden_message_count, all_time_message_count)
@@ -1031,7 +1034,7 @@ class Agent(BaseAgent):
 
     def rebuild_memory(self, force=False, update_timestamp=True, ms: Optional[MetadataStore] = None):
         """Rebuilds the system message with the latest memory object and any shared memory block updates"""
-        curr_system_message = self.messages[0]  # this is the system + memory bank, not just the system prompt
+        curr_system_message = self._messages[0]  # this is the system + memory bank, not just the system prompt
 
         # NOTE: This is a hacky way to check if the memory has changed
         memory_repr = self.memory.compile()
@@ -1047,7 +1050,7 @@ class Agent(BaseAgent):
                     # future if we expect templates to change often.
                     continue
                 block_id = block.get("id")
-                db_block = ms.get_block(block_id=block_id)
+                db_block = ms.get_block(id=block_id)
                 if db_block is None:
                     # this case covers if someone has deleted a shared block by interacting
                     # with some other agent.
@@ -1090,17 +1093,15 @@ class Agent(BaseAgent):
 
             # Swap the system message out (only if there is a diff)
             self._swap_system_message_in_buffer(new_system_message=new_system_message_str)
-            assert self.messages[0]["content"] == new_system_message["content"], (
-                self.messages[0]["content"],
+            assert self._messages[0]["content"] == new_system_message["content"], (
+                self._messages[0]["content"],
                 new_system_message["content"],
             )
 
     def update_system_prompt(self, new_system_prompt: str):
         """Update the system prompt of the agent (requires rebuilding the memory block if there's a difference)"""
-        assert isinstance(new_system_prompt, str)
 
         if new_system_prompt == self.system:
-            input("same???")
             return
 
         self.system = new_system_prompt
@@ -1206,7 +1207,7 @@ class Agent(BaseAgent):
         self.persistence_manager.archival_memory.storage.save()
 
         # attach to agent
-        source = ms.get_source(source_id=source_id)
+        source = ms.get_source(id=source_id)
         assert source is not None, f"Source {source_id} not found in metadata store"
         ms.attach_source(agent_id=self.agent_state.id, source_id=source_id, user_id=self.agent_state.user_id)
 
@@ -1366,19 +1367,17 @@ def save_agent(agent: Agent, ms: MetadataStore):
     agent.update_state()
     agent_state = agent.agent_state
     agent_id = agent_state.id
-    assert isinstance(agent_state.memory, Memory), f"Memory is not a Memory object: {type(agent_state.memory)}"
 
     # NOTE: we're saving agent memory before persisting the agent to ensure
     # that allocated block_ids for each memory block are present in the agent model
     save_agent_memory(agent=agent, ms=ms)
 
-    if ms.get_agent(agent_id=agent.agent_state.id):
+    if ms.get_agent(id=agent.agent_state.id):
         ms.update_agent(agent_state)
     else:
         ms.create_agent(agent_state)
 
-    agent.agent_state = ms.get_agent(agent_id=agent_id)
-    assert isinstance(agent.agent_state.memory, Memory), f"Memory is not a Memory object: {type(agent_state.memory)}"
+    agent.agent_state = ms.get_agent(id=agent_id)
 
 
 def save_agent_memory(agent: Agent, ms: MetadataStore):
@@ -1388,15 +1387,22 @@ def save_agent_memory(agent: Agent, ms: MetadataStore):
     NOTE: we are assuming agent.update_state has already been called.
     """
 
+<<<<<<< HEAD
     for block_dict in agent.memory.to_dict()["memory"].values():
+=======
+    print("SAVE AGENT MEMORY", agent.agent_state.memory.to_dict().values())
+    blocks = []
+    for block_dict in agent.memory.to_dict().values():
+>>>>>>> refs/heads/integration-block-fixes
         # TODO: block creation should happen in one place to enforce these sort of constraints consistently.
-        if block_dict.get("user_id", None) is None:
-            block_dict["user_id"] = agent.agent_state.user_id
+        # if block_dict.get("user_id", None) is None:
+        #     block_dict["user_id"] = agent.agent_state.user_id
         block = Block(**block_dict)
         # FIXME: should we expect for block values to be None? If not, we need to figure out why that is
         # the case in some tests, if so we should relax the DB constraint.
         if block.value is None:
             block.value = ""
+<<<<<<< HEAD
         ms.update_or_create_block(block)
 
 
@@ -1425,3 +1431,17 @@ def validate_json(user_message_text: str) -> str:
     except Exception as e:
         print(f"{CLI_WARNING_PREFIX}couldn't parse user input message as JSON: {e}")
         raise e
+=======
+
+        try:
+            block = ms.update_block(block)
+        except Exception:
+            block = ms.create_block(block)
+
+        blocks.append(block)
+
+    # Need to attach blocks to the Agent in one session instance
+    sql_agent = SQLAgent.read(db_session=ms.db_session, identifier=agent.agent_state.id)
+    [sql_agent.core_memory.append(block.to_sqlalchemy(ms.db_session)) for block in blocks]
+    ms.db_session.commit()
+>>>>>>> refs/heads/integration-block-fixes

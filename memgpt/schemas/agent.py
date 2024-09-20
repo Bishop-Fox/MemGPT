@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 
@@ -9,11 +8,17 @@ from memgpt.schemas.llm_config import LLMConfig
 from memgpt.schemas.memgpt_base import MemGPTBase
 from memgpt.schemas.memory import Memory
 from memgpt.schemas.message import Message
+<<<<<<< HEAD
 from memgpt.schemas.openai.chat_completion_response import UsageStatistics
+=======
+from memgpt.schemas.tool import Tool
+>>>>>>> refs/heads/integration-block-fixes
 
 
 class BaseAgent(MemGPTBase, validate_assignment=True):
     __id_prefix__ = "agent"
+    __sqlalchemy_model__ = "Agent"
+
     description: Optional[str] = Field(None, description="The description of the agent.")
 
     # metadata
@@ -43,14 +48,16 @@ class AgentState(BaseAgent):
     created_at: datetime = Field(..., description="The datetime the agent was created.", default_factory=datetime.now)
 
     # in-context memory
-    message_ids: Optional[List[str]] = Field(default=None, description="The ids of the messages in the agent's in-context memory.")
-    memory: Memory = Field(default_factory=Memory, description="The in-context memory of the agent.")
+    message_ids: Optional[List[Message]] = Field(
+        default=None, alias="messages", description="The ids of the messages in the agent's in-context memory."
+    )
+    memory: Optional[Memory] = Field(default_factory=Memory, alias="core_memory", description="The in-context memory of the agent.")
 
     # tools
-    tools: List[str] = Field(..., description="The tools used by the agent.")
+    tools: Optional[List[Tool]] = Field(..., description="The tools used by the agent.")
 
     # system prompt
-    system: str = Field(..., description="The system prompt used by the agent.")
+    system: Optional[str] = Field(..., description="The system prompt used by the agent.")
 
     # llm information
     llm_config: LLMConfig = Field(..., description="The LLM configuration used by the agent.")
@@ -60,8 +67,8 @@ class AgentState(BaseAgent):
 class CreateAgent(BaseAgent):
     # all optional as server can generate defaults
     name: Optional[str] = Field(None, description="The name of the agent.")
-    message_ids: Optional[List[uuid.UUID]] = Field(None, description="The ids of the messages in the agent's in-context memory.")
-    memory: Optional[Memory] = Field(None, description="The in-context memory of the agent.")
+    message_ids: Optional[List[str]] = Field(None, description="The ids of the messages in the agent's in-context memory.")
+    memory: Optional[Memory] = Field(None, alias="core_memory", description="The in-context memory of the agent.")
     tools: Optional[List[str]] = Field(None, description="The tools used by the agent.")
     system: Optional[str] = Field(None, description="The system prompt used by the agent.")
     llm_config: Optional[LLMConfig] = Field(None, description="The LLM configuration used by the agent.")
@@ -96,12 +103,13 @@ class CreateAgent(BaseAgent):
 class UpdateAgentState(BaseAgent):
     id: str = Field(..., description="The id of the agent.")
     name: Optional[str] = Field(None, description="The name of the agent.")
-    tools: Optional[List[str]] = Field(None, description="The tools used by the agent.")
+    tools: Optional[List[Union[Tool, str]]] = Field(None, description="The tools used by the agent.")
     system: Optional[str] = Field(None, description="The system prompt used by the agent.")
     llm_config: Optional[LLMConfig] = Field(None, description="The LLM configuration used by the agent.")
     embedding_config: Optional[EmbeddingConfig] = Field(None, description="The embedding configuration used by the agent.")
 
     # TODO: determine if these should be editable via this schema?
+<<<<<<< HEAD
     message_ids: Optional[List[str]] = Field(None, description="The ids of the messages in the agent's in-context memory.")
     memory: Optional[Memory] = Field(None, description="The in-context memory of the agent.")
 
@@ -115,3 +123,9 @@ class AgentStepResponse(BaseModel):
         ..., description="Whether the agent step ended because the in-context memory is near its limit."
     )
     usage: UsageStatistics = Field(..., description="Usage statistics of the LLM call during the agent's step.")
+=======
+    message_ids: Optional[List[Union[Message, str]]] = Field(
+        None, alias="messages", description="The ids of the messages in the agent's in-context memory."
+    )
+    memory: Optional[Memory] = Field(None, alias="core_memory", description="The in-context memory of the agent.")
+>>>>>>> refs/heads/integration-block-fixes
